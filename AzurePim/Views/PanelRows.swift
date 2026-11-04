@@ -118,7 +118,7 @@ struct ActiveRow: View {
                     Button {
                         confirming = true
                     } label: {
-                        Image(systemName: "stop.circle")
+                        Label("Deactivate \(assignment.roleName)", systemImage: "stop.circle").labelStyle(.iconOnly)
                     }
                     .buttonStyle(.borderless)
                     .disabled(tooRecent || store.isOffline)
@@ -246,7 +246,7 @@ struct FavoriteChips: View {
                         Button {
                             store.favoriteToast = nil
                         } label: {
-                            Image(systemName: "xmark").imageScale(.small)
+                            Label("Dismiss", systemImage: "xmark").labelStyle(.iconOnly).imageScale(.small)
                         }
                         .buttonStyle(.borderless)
                     }

@@ -22,11 +22,11 @@ struct FavoritesView: View {
             .onDeleteCommand { confirmingDelete = favorites.first { $0.id == selection } }
             .safeAreaInset(edge: .bottom) {
                 HStack(spacing: 0) {
-                    Button(action: add) { Image(systemName: "plus") }.help("New favorite")
+                    Button(action: add) { Label("New favorite", systemImage: "plus").labelStyle(.iconOnly) }.help("New favorite")
                     Button {
                         confirmingDelete = favorites.first { $0.id == selection }
                     } label: {
-                        Image(systemName: "minus")
+                        Label("Delete favorite", systemImage: "minus").labelStyle(.iconOnly)
                     }
                     .disabled(selection == nil)
                     .help("Delete favorite")
@@ -154,7 +154,7 @@ private struct FavoriteEditor: View {
                     favorite.items.removeAll { $0.eligibleRoleId == item.eligibleRoleId }
                     try? context.save()
                 } label: {
-                    Image(systemName: "minus.circle")
+                    Label("Remove from favorite", systemImage: "minus.circle").labelStyle(.iconOnly)
                 }
                 .buttonStyle(.borderless)
                 .help("Remove from favorite")

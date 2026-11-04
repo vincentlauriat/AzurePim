@@ -135,7 +135,7 @@ struct MenuBarPanel: View {
             Button {
                 Task { await store.refresh() }
             } label: {
-                Image(systemName: "arrow.clockwise")
+                Label("Refresh", systemImage: "arrow.clockwise").labelStyle(.iconOnly)
             }
             .buttonStyle(.borderless)
             .keyboardShortcut("r")
@@ -166,14 +166,14 @@ struct MenuBarPanel: View {
                 NSApp.activate(ignoringOtherApps: true)
                 openSettings()
             } label: {
-                Image(systemName: "gearshape")
+                Label("Settings", systemImage: "gearshape").labelStyle(.iconOnly)
             }
             .help("Settings")
             .keyboardShortcut(",")
             Button {
                 NSApp.terminate(nil)
             } label: {
-                Image(systemName: "power")
+                Label("Quit AzurePim", systemImage: "power").labelStyle(.iconOnly)
             }
             .help("Quit AzurePim")
             .keyboardShortcut("q")
