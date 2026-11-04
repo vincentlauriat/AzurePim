@@ -81,16 +81,25 @@ struct MenuBarPanel: View {
             } else {
                 header
                 Divider()
+                // Active roles are pinned at the top, readable at first glance without scrolling.
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         errorBanners
-                        FavoriteChips(favorites: favorites)
                         activeSection
+                    }
+                    .padding(12)
+                }
+                .frame(maxHeight: 260)
+                .fixedSize(horizontal: false, vertical: true)
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        FavoriteChips(favorites: favorites)
                         eligibleSection
                     }
                     .padding(12)
                 }
-                .frame(maxHeight: 460)
+                .frame(maxHeight: 300)
                 Divider()
                 footer
             }
@@ -204,8 +213,13 @@ struct MenuBarPanel: View {
         }
     }
 
+    private var activeTitle: String {
+        let total = activations.count + permanents.count
+        return total == 0 ? "Active" : "Active (\(total))"
+    }
+
     private var activeSection: some View {
-        PanelSection(title: "Active") {
+        PanelSection(title: activeTitle) {
             if activations.isEmpty && permanents.isEmpty {
                 Text("No active role").font(.callout).foregroundStyle(.secondary)
             } else if activations.isEmpty {
