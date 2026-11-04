@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: brew install xcodegen swiftlint
+
+      - name: Lint
+        run: swiftlint --strict
+
+      - name: Core tests
+        run: swift test --package-path Packages/AzurePimCore
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build app
+        run: |
+          xcodebuild -project AzurePim.xcodeproj -scheme AzurePim -configuration Debug \
+            -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build

@@ -15,7 +15,7 @@ requires admin consent, which only a tenant administrator can grant.
 
 - Application: AzurePim — multi-tenant public client (no secret), publisher [publisher name, verified]
 - Client ID: [client id]
-- Consent link: `https://login.microsoftonline.com/[tenant id]/v2.0/adminconsent?client_id=[client id]&scope=https://graph.microsoft.com/.default&redirect_uri=msauth.com.vincentlauriat.azurepim://auth`
+- Consent link: `https://login.microsoftonline.com/[tenant id]/v2.0/adminconsent?client_id=[client id]&scope=https://graph.microsoft.com/.default&redirect_uri=msauth.fr.vincentlauriat.azurepim://auth`
 
 **Permissions — all delegated** (the app acts only as the signed-in user, within that user's own rights; no
 application permissions):
