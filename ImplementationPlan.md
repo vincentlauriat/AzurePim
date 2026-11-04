@@ -11,7 +11,7 @@ Names of features, screens and entities are those of `PRD.md`, `AppFlow.md` and 
 | T1.2 App shell | agent | AppFlow navigation rules | `MenuBarExtra(.window)` with placeholder panel, main `Window` with sidebar (Roles, History, Favorites), `Settings` scene, `LSUIElement`, Dock icon toggling | App runs, icon in menu bar, ⌘0 opens window, closing it hides Dock icon | T1.1 |
 | T1.3 Dependencies | agent | TRD | SPM: MSAL (`microsoft-authentication-library-for-objc`), Sparkle 2 | Build green with both linked | T1.1 |
 | T1.4 CI | agent | TRD | GitHub Actions: build + `swift test` on `AzurePimCore` + SwiftLint | CI green on a PR | T1.1 |
-| T1.5 App registration | Vincent | TRD scopes table, PRD open question 2 | Multi-tenant public client in publisher tenant, redirect URI `msauth.com.vincentlauriat.azurepim://auth`, delegated scopes listed in TRD | Client id recorded in `Config.xcconfig` | — |
+| T1.5 App registration | Vincent | TRD scopes table, PRD open question 2 | Multi-tenant public client in publisher tenant, redirect URI `msauth.fr.vincentlauriat.azurepim://auth`, delegated scopes listed in TRD | Client id recorded in `Config.xcconfig` | — |
 
 **Checkpoint 1:** app launches from Xcode, menu bar icon visible, empty panel and window open/close correctly.
 

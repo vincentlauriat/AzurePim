@@ -1,0 +1,79 @@
+name: AzurePim
+options:
+  bundleIdPrefix: fr.vincentlauriat
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  AzurePimCore:
+    path: Packages/AzurePimCore
+  MSAL:
+    url: https://github.com/AzureAD/microsoft-authentication-library-for-objc
+    from: "2.0.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
+
+# Explicit scheme (xcodegen does not keep hand-made schemes across regenerations).
+schemes:
+  AzurePim:
+    build:
+      targets:
+        AzurePim: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
+targets:
+  AzurePim:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: AzurePim
+        excludes:
+          - "**/*.entitlements"
+          - "Info.plist"
+    dependencies:
+      - package: AzurePimCore
+      - package: MSAL
+      - package: Sparkle
+    settings:
+      base:
+        PRODUCT_NAME: AzurePim
+        PRODUCT_BUNDLE_IDENTIFIER: fr.vincentlauriat.azurepim
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        ARCHS: "$(ARCHS_STANDARD)"
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: AzurePim/AzurePim.entitlements
+        # Debug builds are unsigned; Scripts/release.sh signs with Developer ID (Step 6).
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+    info:
+      path: AzurePim/Info.plist
+      properties:
+        CFBundleName: AzurePim
+        CFBundleDisplayName: AzurePim
+        CFBundleIdentifier: fr.vincentlauriat.azurepim
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "14.0"
+        LSApplicationCategoryType: public.app-category.developer-tools
+        # Menu bar agent: no Dock icon until the main window opens.
+        LSUIElement: true
+        NSHumanReadableCopyright: "© 2026 Vincent Lauriat. MIT License."
+        CFBundleURLTypes:
+          - CFBundleURLName: fr.vincentlauriat.azurepim
+            CFBundleURLSchemes:
+              - azurepim
+              # MSAL redirect URI (TRD): msauth.<bundle id>://auth
+              - msauth.fr.vincentlauriat.azurepim

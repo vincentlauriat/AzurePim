@@ -52,7 +52,7 @@ Directory scopes are requested **incrementally**, only when the user opens the E
 user consent alone.
 
 App registration: multi-tenant (`AzureADMultipleOrgs`), public client, redirect URI
-`msauth.com.vincentlauriat.azurepim://auth` *(assumption: bundle id `com.vincentlauriat.azurepim`)*, publisher
+`msauth.fr.vincentlauriat.azurepim://auth` *(assumption: bundle id `fr.vincentlauriat.azurepim`)*, publisher
 tenant owned by Vincent *(assumption — PRD open question 2)*, publisher verification via the Microsoft Partner
 Network before public release.
 
