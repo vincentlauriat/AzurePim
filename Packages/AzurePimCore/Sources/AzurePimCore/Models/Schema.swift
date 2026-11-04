@@ -27,7 +27,11 @@ public enum AzurePimStore {
         if inMemory {
             config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         } else {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            // Owner-only folder: the store lists the user's privileged roles (security review M3).
+            let folder = url.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
             config = ModelConfiguration(schema: schema, url: url)
         }
         return try ModelContainer(for: schema, migrationPlan: AzurePimMigrationPlan.self, configurations: config)

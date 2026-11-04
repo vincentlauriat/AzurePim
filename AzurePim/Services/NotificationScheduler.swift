@@ -20,7 +20,8 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
     override init() {
         super.init()
         center.delegate = self
-        let extend = UNNotificationAction(identifier: Self.extendAction, title: "Extend", options: [])
+        // Changes privileges: needs an unlocked Mac (security review I1).
+        let extend = UNNotificationAction(identifier: Self.extendAction, title: "Extend", options: [.authenticationRequired])
         let dismiss = UNNotificationAction(identifier: Self.dismissAction, title: "Dismiss", options: [.destructive])
         center.setNotificationCategories([UNNotificationCategory(identifier: Self.category, actions: [extend, dismiss],
                                                                  intentIdentifiers: [])])

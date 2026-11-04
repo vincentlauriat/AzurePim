@@ -20,21 +20,38 @@ public protocol ProcessRunning: Sendable {
 public struct ProcessRunner: ProcessRunning {
     public init() {}
 
+    /// The timeout resumes the caller itself: it never waits for the child, which may ignore SIGTERM or leave a
+    /// grandchild holding the pipes open. The child gets SIGTERM, then SIGKILL one second later.
     public func run(_ executable: URL, arguments: [String], environment: [String: String],
                     timeout: Duration) async throws -> ProcessOutput {
         let job = Job(executable: executable, arguments: arguments, environment: environment)
-        return try await withThrowingTaskGroup(of: ProcessOutput?.self) { group in
-            group.addTask { try await job.run() }
-            group.addTask {
-                try await Task.sleep(for: timeout)
-                return nil
+        let seconds = Double(timeout.components.seconds) + Double(timeout.components.attoseconds) / 1e18
+        return try await withCheckedThrowingContinuation { continuation in
+            let once = Once(continuation)
+            job.start { once.resume(with: $0) }
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + seconds) {
+                if once.resume(with: .failure(TokenError.timedOut)) { job.kill() }
             }
-            defer { group.cancelAll() }
-            guard let first = try await group.next(), let result = first else {
-                job.terminate()
-                throw TokenError.timedOut
-            }
-            return result
+        }
+    }
+
+    /// Resumes a continuation exactly once (process completion and timeout race).
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<ProcessOutput, Error>?
+
+        init(_ continuation: CheckedContinuation<ProcessOutput, Error>) {
+            self.continuation = continuation
+        }
+
+        @discardableResult
+        func resume(with result: Result<ProcessOutput, Error>) -> Bool {
+            lock.lock()
+            let pending = continuation
+            continuation = nil
+            lock.unlock()
+            pending?.resume(with: result)
+            return pending != nil
         }
     }
 
@@ -55,32 +72,35 @@ public struct ProcessRunner: ProcessRunning {
             process.standardInput = FileHandle.nullDevice
         }
 
-        func run() async throws -> ProcessOutput {
-            try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async { [self] in
-                    do { try process.run() } catch {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    let group = DispatchGroup()
-                    group.enter()
-                    DispatchQueue.global(qos: .userInitiated).async { [self] in
-                        errData = err.fileHandleForReading.readDataToEndOfFile()
-                        group.leave()
-                    }
-                    let outData = out.fileHandleForReading.readDataToEndOfFile()
-                    group.wait()
-                    process.waitUntilExit()
-                    continuation.resume(returning: ProcessOutput(
-                        status: process.terminationStatus,
-                        stdout: String(bytes: outData, encoding: .utf8) ?? "",
-                        stderr: String(bytes: errData, encoding: .utf8) ?? ""))
+        func start(_ completion: @escaping @Sendable (Result<ProcessOutput, Error>) -> Void) {
+            DispatchQueue.global(qos: .userInitiated).async { [self] in
+                do { try process.run() } catch {
+                    completion(.failure(error))
+                    return
                 }
+                let group = DispatchGroup()
+                group.enter()
+                DispatchQueue.global(qos: .userInitiated).async { [self] in
+                    errData = err.fileHandleForReading.readDataToEndOfFile()
+                    group.leave()
+                }
+                let outData = out.fileHandleForReading.readDataToEndOfFile()
+                group.wait()
+                process.waitUntilExit()
+                completion(.success(ProcessOutput(
+                    status: process.terminationStatus,
+                    stdout: String(bytes: outData, encoding: .utf8) ?? "",
+                    stderr: String(bytes: errData, encoding: .utf8) ?? "")))
             }
         }
 
-        func terminate() {
-            if process.isRunning { process.terminate() }
+        func kill() {
+            guard process.isRunning else { return }
+            let pid = process.processIdentifier
+            process.terminate()
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1) { [self] in
+                if process.isRunning { Darwin.kill(pid, SIGKILL) }
+            }
         }
     }
 }

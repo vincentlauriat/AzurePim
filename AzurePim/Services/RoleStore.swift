@@ -171,9 +171,14 @@ final class RoleStore {
 
     func sources(for account: Account) throws -> [any PIMSource] {
         let provider = try accounts.provider(for: account)
-        let tenantId = account.tenantId
+        let tenantId = account.tenantId, objectId = account.objectId.lowercased(), upn = account.upn
         return PIMService.sources(token: { resource, claims in
-            try await provider.token(for: resource, tenantId: tenantId, claims: claims)
+            let token = try await provider.token(for: resource, tenantId: tenantId, claims: claims)
+            // `az` follows whoever last ran `az login`: never act for one account with another identity's token.
+            if let oid = JWTClaims(token: token.value)?.objectId, oid.lowercased() != objectId {
+                throw TokenError.cliNotSignedIn(command: "az login  # as \(upn)")
+            }
+            return token
         }, directory: account.directoryAccess == .enabled)
     }
 

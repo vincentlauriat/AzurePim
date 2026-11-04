@@ -182,8 +182,17 @@ extension RoleStore {
     /// Deletes history older than the retention setting (pending requests are kept).
     func purgeHistory() {
         let records = (try? context.fetch(FetchDescriptor<ActivationRecord>())) ?? []
-        for record in Retention.expired(records, days: accounts.settings.historyRetentionDays) {
+        let expired = Retention.expired(records, days: accounts.settings.historyRetentionDays)
+        for record in expired {
             context.delete(record)
+        }
+        // A justification is kept only while a record still holds it (TRD: deleted with history).
+        let removed = Set(expired.map(\.id))
+        let kept = records.filter { !removed.contains($0.id) }
+        for role in (try? context.fetch(FetchDescriptor<EligibleRole>())) ?? [] where role.lastJustification != nil {
+            if !kept.contains(where: { $0.eligibleRoleId == role.id && $0.justification == role.lastJustification }) {
+                role.lastJustification = nil
+            }
         }
     }
 }

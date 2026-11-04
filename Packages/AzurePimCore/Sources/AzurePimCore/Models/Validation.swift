@@ -65,6 +65,12 @@ public enum Validation {
         guard url.lastPathComponent == "az", fileManager.isExecutableFile(atPath: path) else {
             return .invalidFormat("azCLIPath")
         }
+        // Refuse a target, or a folder holding it, that any user can write (security review L2).
+        let target = url.resolvingSymlinksInPath()
+        for item in [target, target.deletingLastPathComponent()] {
+            let mode = (try? fileManager.attributesOfItem(atPath: item.path)[.posixPermissions] as? Int) ?? 0
+            if mode & 0o002 != 0 { return .invalidFormat("azCLIPath") }
+        }
         return nil
     }
 }

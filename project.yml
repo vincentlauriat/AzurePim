@@ -10,10 +10,10 @@ packages:
     path: Packages/AzurePimCore
   MSAL:
     url: https://github.com/AzureAD/microsoft-authentication-library-for-objc
-    from: "2.0.0"
+    exactVersion: "2.17.1"
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
-    from: "2.6.0"
+    exactVersion: "2.10.1"
 
 # Explicit scheme (xcodegen does not keep hand-made schemes across regenerations).
 schemes:

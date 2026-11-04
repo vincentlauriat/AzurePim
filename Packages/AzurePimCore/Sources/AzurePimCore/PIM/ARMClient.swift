@@ -59,7 +59,7 @@ public struct ARMClient: PIMSource {
     public func policy(for eligibility: RemoteEligibility) async throws -> RolePolicy {
         let items = try await client.list(Self.url(
             "\(eligibility.scope)/providers/Microsoft.Authorization/roleManagementPolicyAssignments",
-            filter: "roleDefinitionId eq '\(eligibility.roleDefinitionId)'"))
+            filter: "roleDefinitionId eq \(OData.literal(eligibility.roleDefinitionId))"))
         let rules = (items.first?["properties"] as? [String: Any])?["effectiveRules"] as? [[String: Any]] ?? []
         return RolePolicy(rules: rules)
     }

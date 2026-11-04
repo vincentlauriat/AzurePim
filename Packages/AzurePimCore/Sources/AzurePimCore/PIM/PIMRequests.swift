@@ -72,11 +72,12 @@ extension EntraRoleClient {
     }
 
     public func status(ofRequest id: String) async throws -> RequestStatus {
-        RequestOutcome.status(from: try await client.json("GET", GraphURL.make("\(Self.requests)/\(id)"))["status"] as? String)
+        let response = try await client.json("GET", GraphURL.make("\(Self.requests)/\(OData.segment(id))"))
+        return RequestOutcome.status(from: response["status"] as? String)
     }
 
     public func cancel(request id: String) async throws {
-        _ = try await client.json("POST", GraphURL.make("\(Self.requests)/\(id)/cancel"))
+        _ = try await client.json("POST", GraphURL.make("\(Self.requests)/\(OData.segment(id))/cancel"))
     }
 }
 
@@ -97,11 +98,12 @@ extension PIMGroupClient {
     }
 
     public func status(ofRequest id: String) async throws -> RequestStatus {
-        RequestOutcome.status(from: try await client.json("GET", GraphURL.make("\(Self.requests)/\(id)"))["status"] as? String)
+        let response = try await client.json("GET", GraphURL.make("\(Self.requests)/\(OData.segment(id))"))
+        return RequestOutcome.status(from: response["status"] as? String)
     }
 
     public func cancel(request id: String) async throws {
-        _ = try await client.json("POST", GraphURL.make("\(Self.requests)/\(id)/cancel"))
+        _ = try await client.json("POST", GraphURL.make("\(Self.requests)/\(OData.segment(id))/cancel"))
     }
 }
 
@@ -111,5 +113,18 @@ extension GraphURL {
         return RemoteRequest(id: id, source: source, roleName: roleName, scopeName: scopeName,
                              status: RequestOutcome.status(from: item["status"] as? String),
                              createdAt: PIMDates.parse(item["createdDateTime"]), justification: item["justification"] as? String)
+    }
+}
+
+/// Escaping for values that come from Microsoft responses or the local store (security review L6).
+enum OData {
+    /// OData string literal: quotes doubled.
+    static func literal(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+    }
+
+    /// One path segment: `/`, `?`, `#` and `%` encoded.
+    static func segment(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#%"))) ?? value
     }
 }

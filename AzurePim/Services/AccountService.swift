@@ -98,6 +98,21 @@ final class AccountService {
         try context.save()
     }
 
+    /// Settings › Privacy (TRD › Security): signs out every account, then deletes accounts, roles, favorites, history
+    /// and preferences from this Mac. Stops at the first MSAL sign-out failure (no orphaned credentials).
+    func deleteAllLocalData() throws {
+        for account in try context.fetch(FetchDescriptor<Account>()) {
+            try remove(account)
+        }
+        try context.delete(model: Favorite.self)
+        try context.delete(model: ActivationRecord.self)
+        try context.delete(model: EligibleRole.self)
+        try context.delete(model: ActiveAssignment.self)
+        try context.delete(model: AppSettings.self)
+        try context.save()
+        _ = try AzurePimStore.settings(in: context)   // fresh defaults; onboarding shows again at next launch
+    }
+
     private func msalProvider(for account: Account) throws -> MSALTokenProvider {
         if let existing = msalProviders[account.id] { return existing }
         // Use the client the account signed in with; fall back to the current one for older rows.
