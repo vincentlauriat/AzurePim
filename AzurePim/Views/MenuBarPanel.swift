@@ -82,7 +82,10 @@ struct MenuBarPanel: View {
 
     /// The panel must fit under the menu bar; past ~640 pt the main window is the better place.
     private var maxHeight: CGFloat {
-        max(320, min(640, (NSScreen.main?.visibleFrame.height ?? 800) - 24))
+        #if DEBUG
+        if SnapshotRunner.directory != nil { return 1400 }   // full panel in screenshots
+        #endif
+        return max(320, min(640, (NSScreen.main?.visibleFrame.height ?? 800) - 24))
     }
 
     var body: some View {

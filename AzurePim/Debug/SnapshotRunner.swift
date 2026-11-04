@@ -18,17 +18,22 @@ enum SnapshotRunner {
         Task { @MainActor in
             while store.lastRefresh == nil { try? await Task.sleep(for: .milliseconds(300)) }
             try? await Task.sleep(for: .seconds(1))
+            // Screenshots show every card expanded; the user's own choices are restored afterwards.
+            let keys = ["panel.showActive", "panel.showPermanent", "panel.showFavorites", "panel.showEligible"]
+            let saved = keys.map { UserDefaults.standard.object(forKey: $0) }
+            keys.forEach { UserDefaults.standard.set(true, forKey: $0) }
             for scheme in [ColorScheme.dark, .light] {
                 let suffix = scheme == .dark ? "dark" : "light"
-                render(MenuBarPanel(), size: NSSize(width: Theme.panelWidth, height: 900), scheme: scheme,
+                render(MenuBarPanel(), size: NSSize(width: Theme.panelWidth, height: 1400), scheme: scheme,
                        to: directory.appending(path: "panel-\(suffix).png"), env: env)
                 for item in SidebarItem.allCases {
-                    render(MainWindow(initial: item), size: NSSize(width: 1100, height: 720), scheme: scheme,
+                    render(MainWindow(snapshot: item), size: NSSize(width: 1100, height: 720), scheme: scheme,
                            to: directory.appending(path: "window-\(item.rawValue.lowercased())-\(suffix).png"),
                            env: env)
                 }
             }
             renderDemo(to: directory)
+            zip(keys, saved).forEach { UserDefaults.standard.set($1, forKey: $0) }
             NSApp.terminate(nil)
         }
     }
@@ -54,13 +59,46 @@ enum SnapshotRunner {
         context.insert(ActiveAssignment(id: "a3", account: account, source: .azureResource, roleName: "Key Vault Secrets Officer",
                                         scope: "/k", scopeName: "kv-app-dev-weu001", assignmentType: .assigned,
                                         startAt: .now - 86_400, endAt: nil))
+        addDemoHistory(account: account, reader: reader, contributor: contributor, context: context)
+        context.insert(Favorite(name: "Morning deploy", items: [FavoriteItem(eligibleRoleId: contributor.id, duration: "PT4H")]))
+        context.insert(Favorite(name: "Audit", items: [FavoriteItem(eligibleRoleId: reader.id, duration: "PT1H")]))
         try? context.save()
         let accounts = AccountService(context: context)
         let store = RoleStore(context: context, accounts: accounts, notifications: NotificationScheduler())
+        let env = Env(container: demo, accounts: accounts, store: store)
         for scheme in [ColorScheme.dark, .light] {
-            render(MenuBarPanel(), size: NSSize(width: Theme.panelWidth, height: 900), scheme: scheme,
-                   to: directory.appending(path: "panel-demo-\(scheme == .dark ? "dark" : "light").png"),
-                   env: Env(container: demo, accounts: accounts, store: store))
+            let suffix = scheme == .dark ? "dark" : "light"
+            render(MenuBarPanel(), size: NSSize(width: Theme.panelWidth, height: 1400), scheme: scheme,
+                   to: directory.appending(path: "panel-demo-\(suffix).png"), env: env)
+            for item in SidebarItem.allCases {
+                render(MainWindow(snapshot: item), size: NSSize(width: 1100, height: 640), scheme: scheme,
+                       to: directory.appending(path: "window-demo-\(item.rawValue.lowercased())-\(suffix).png"), env: env)
+            }
+        }
+    }
+
+    private static func addDemoHistory(account: Account, reader: EligibleRole, contributor: EligibleRole, context: ModelContext) {
+        struct Sample {
+            let role: EligibleRole, action: ActivationAction, ago: TimeInterval, justification: String, took: TimeInterval
+        }
+        let samples = [
+            Sample(role: reader, action: .activate, ago: 18 * 60, justification: "Audit of the tenant root policies", took: 14),
+            Sample(role: contributor, action: .activate, ago: 7 * 3600, justification: "Deploy release 2.4 to production", took: 21),
+            Sample(role: reader, action: .deactivate, ago: 26 * 3600, justification: "", took: 0),
+            Sample(role: reader, action: .activate, ago: 27 * 3600, justification: "Investigate cost anomaly", took: 17)
+        ]
+        for sample in samples {
+            let role = sample.role, action = sample.action, ago = sample.ago
+            let justification = sample.justification, took = sample.took
+            let record = ActivationRecord(account: account, eligibleRoleId: role.id, roleName: role.roleName,
+                                          scopeName: role.scopeName, source: .azureResource, action: action,
+                                          requestedDuration: action == .activate ? "PT1H" : nil,
+                                          justification: justification.isEmpty ? nil : justification,
+                                          panelOpenedAt: action == .activate ? .now - ago - took : nil)
+            record.sentAt = .now - ago
+            record.status = .provisioned
+            record.completedAt = .now - ago + max(took - 8, 1)
+            context.insert(record)
         }
     }
 

@@ -37,13 +37,17 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 struct MainWindow: View {
     @State private var selection: SidebarItem?
 
-    init(initial: SidebarItem = .roles) {
-        _selection = State(initialValue: initial)
+    /// Debug snapshots: shows a section without a sidebar highlight (an off-screen window renders it black).
+    private let snapshot: SidebarItem?
+
+    init(snapshot: SidebarItem? = nil) {
+        self.snapshot = snapshot
+        _selection = State(initialValue: .roles)
     }
 
     var body: some View {
         NavigationSplitView {
-            List(SidebarItem.allCases, selection: $selection) { item in
+            List(SidebarItem.allCases, selection: snapshot == nil ? $selection : .constant(nil)) { item in
                 Label {
                     Text(item.rawValue)
                 } icon: {
@@ -53,7 +57,7 @@ struct MainWindow: View {
             }
             .navigationSplitViewColumnWidth(180)
         } detail: {
-            switch selection ?? .roles {
+            switch snapshot ?? selection ?? .roles {
             case .roles: RolesView()
             case .history: HistoryView()
             case .favorites: FavoritesView()
