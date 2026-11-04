@@ -24,13 +24,10 @@ extension RoleStore {
         case .reactivate(let input):
             var status = await activate(role, input: input, fromPanel: false, action: .extend)
             if status == nil, lastActivationError[role.id]?.alreadyActive == true {
-                // Azure keeps one activation per eligibility: end the current one, then activate again.
-                rowErrors[role.id] = nil
-                guard let current = activeActivations().first(where: { $0.eligibleRole?.id == role.id }),
-                      await deactivate(current, refreshAfter: false) else {
-                    return "Couldn't extend: \(rowErrors.values.first ?? "deactivation failed")."
+                switch await reactivateAfterDeactivating(role, input: input) {
+                case .success(let result): status = result
+                case .failure(let message): return message.text
                 }
-                status = await activate(role, input: input, fromPanel: false, action: .extend)
             }
             switch status {
             case .provisioned?:
@@ -40,6 +37,29 @@ extension RoleStore {
             default: return "Couldn't extend: \(rowErrors[role.id] ?? "unknown error")."
             }
         }
+    }
+
+    struct ExtendFailure: Error {
+        let text: String
+    }
+
+    /// Azure keeps one activation per eligibility: end the current one, then activate again.
+    /// The failure text says whether the role is still active.
+    private func reactivateAfterDeactivating(_ role: EligibleRole,
+                                             input: ActivationInput) async -> Result<RequestStatus, ExtendFailure> {
+        rowErrors[role.id] = nil
+        guard let current = activeActivations().first(where: { $0.eligibleRole?.id == role.id }) else {
+            return .failure(ExtendFailure(text: "Couldn't extend: the activation was not found."))
+        }
+        let currentId = current.id
+        guard await deactivate(current, refreshAfter: false) else {
+            return .failure(ExtendFailure(text: "Couldn't extend (role still active): \(rowErrors[currentId] ?? "deactivation failed")."))
+        }
+        guard let status = await activate(role, input: input, fromPanel: false, action: .extend) else {
+            return .failure(ExtendFailure(
+                text: "Role deactivated; re-activation failed: \(rowErrors[role.id] ?? "unknown error"). Activate it from the panel."))
+        }
+        return .success(status)
     }
 
     func eligibleRole(id: String) -> EligibleRole? {

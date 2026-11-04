@@ -27,6 +27,7 @@ enum DeepLinkHandler {
     private static func runFavorite(named name: String) async {
         guard let store = Self.store else { return }
         guard let favorite = store.favorite(named: name) else {
+            NSApp.activate(ignoringOtherApps: true)
             alert("No favorite named “\(name)”.", info: "Create it in AzurePim › Favorites.")
             return
         }

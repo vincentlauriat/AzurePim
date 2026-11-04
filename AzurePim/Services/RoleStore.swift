@@ -210,7 +210,7 @@ final class RoleStore {
         let record = ActivationRecord(account: account, eligibleRoleId: role.id, roleName: role.roleName,
                                       scopeName: role.scopeName, source: role.source, action: action,
                                       requestedDuration: input.duration, justification: input.justification,
-                                      ticketNumber: input.ticketNumber, panelOpenedAt: fromPanel ? panelOpenedAt : nil,
+                                      ticketNumber: input.ticketNumber, panelOpenedAt: fromPanel ? recentPanelOpen : nil,
                                       viaFavorite: viaFavorite)
         context.insert(record)
         do {
@@ -277,6 +277,12 @@ final class RoleStore {
     }
 
     // MARK: - Queries
+
+    /// Panel open time if recent: a stale value (panel `onAppear` not called again) would inflate the median.
+    private var recentPanelOpen: Date? {
+        guard let opened = panelOpenedAt, Date.now.timeIntervalSince(opened) < 600 else { return nil }
+        return opened
+    }
 
     func activeActivations() -> [ActiveAssignment] {
         let all = (try? context.fetch(FetchDescriptor<ActiveAssignment>(sortBy: [SortDescriptor(\.endAt)]))) ?? []

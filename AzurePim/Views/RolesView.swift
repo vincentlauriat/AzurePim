@@ -146,6 +146,7 @@ private struct RoleDetail: View {
     @Environment(RoleStore.self) private var store
     let row: RoleRow
     @State private var activating = false
+    @State private var confirmingDeactivate = false
 
     var body: some View {
         ScrollView {
@@ -185,7 +186,7 @@ private struct RoleDetail: View {
         }
         .sheet(isPresented: $activating) {
             if let role = row.role {
-                ActivationSheet(role: role) { activating = false }.frame(width: 360)
+                ActivationSheet(role: role, fromPanel: false) { activating = false }.frame(width: 360)
             }
         }
     }
@@ -213,9 +214,14 @@ private struct RoleDetail: View {
             if store.busy.contains(role.id) || row.assignment.map({ store.busy.contains($0.id) }) == true {
                 ProgressView().controlSize(.small)
             } else if let assignment = row.assignment {
-                Button("Deactivate", role: .destructive) { Task { await store.deactivate(assignment) } }
+                Button("Deactivate", role: .destructive) { confirmingDeactivate = true }
                     .disabled(Date.now.timeIntervalSince(assignment.startAt) < 300)
                     .help("Azure refuses deactivation within 5 minutes of activation")
+                    .confirmationDialog("Deactivate \(assignment.roleName)?", isPresented: $confirmingDeactivate) {
+                        Button("Deactivate", role: .destructive) { Task { await store.deactivate(assignment) } }
+                    } message: {
+                        Text(assignment.scopeName)
+                    }
             } else {
                 Button("Activate…") { activating = true }.buttonStyle(.borderedProminent)
             }

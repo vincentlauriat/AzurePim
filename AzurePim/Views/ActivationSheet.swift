@@ -6,6 +6,8 @@ import SwiftUI
 struct ActivationSheet: View {
     @Environment(RoleStore.self) private var store
     let role: EligibleRole
+    /// False outside the menu bar panel (Roles Window): keeps the record out of the time-to-activation median.
+    var fromPanel = true
     let close: () -> Void
 
     @State private var hours: Double = 8
@@ -97,7 +99,7 @@ struct ActivationSheet: View {
     private func send() async {
         let input = ActivationInput(duration: duration, justification: justification.trimmingCharacters(in: .whitespacesAndNewlines),
                                     ticketNumber: role.requiresTicket ? ticket : nil)
-        result = await store.activate(role, input: input)
+        result = await store.activate(role, input: input, fromPanel: fromPanel)
         if result == .provisioned { close() }
     }
 }

@@ -177,3 +177,20 @@ struct PendingRequestTests {
             == "/v1.0/identityGovernance/privilegedAccess/group/assignmentScheduleRequests/x1/cancel")
     }
 }
+
+@MainActor
+struct FavoritePersistenceTests {
+    /// The Favorites editor mutates `items[i]` in place: SwiftData must persist it.
+    @Test func inPlaceItemEditIsPersisted() throws {
+        let container = try AzurePimStore.makeContainer(inMemory: true)
+        let favorite = Favorite(name: "Morning", items: [FavoriteItem(eligibleRoleId: "r1", duration: "PT8H")])
+        container.mainContext.insert(favorite)
+        try container.mainContext.save()
+        favorite.items[0].duration = "PT2H"
+        favorite.items[0].justification = "deploy"
+        try container.mainContext.save()
+        let fresh = ModelContext(container)
+        let stored = try #require(try fresh.fetch(FetchDescriptor<Favorite>()).first)
+        #expect(stored.items == [FavoriteItem(eligibleRoleId: "r1", duration: "PT2H", justification: "deploy")])
+    }
+}
