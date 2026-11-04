@@ -28,7 +28,12 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func reschedule(activations: [ActiveAssignment], leadMinutes: Int) async {
-        let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(Self.prefix) }
+        // Only identifiers (Sendable) cross back: Swift 6.1 rejects sending [UNNotificationRequest].
+        let center = self.center
+        let ids: [String] = await withCheckedContinuation { done in
+            center.getPendingNotificationRequests { requests in done.resume(returning: requests.map(\.identifier)) }
+        }
+        let pending = ids.filter { $0.hasPrefix(Self.prefix) }
         center.removePendingNotificationRequests(withIdentifiers: pending)
         for assignment in activations {
             guard let end = assignment.endAt else { continue }
