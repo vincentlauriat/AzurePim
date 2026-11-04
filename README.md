@@ -36,4 +36,4 @@ open build/DerivedData/Build/Products/Debug/AzurePim.app
 | [ImplementationPlan.md](ImplementationPlan.md) | Build order and traceability |
 | [docs/admin-consent/](docs/admin-consent/) | Admin consent emails |
 
-License: MIT *(planned)*.
+License: [MIT](LICENSE).
