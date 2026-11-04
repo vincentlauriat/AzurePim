@@ -1,17 +1,30 @@
+import AzurePimCore
+import SwiftData
 import SwiftUI
 
 /// Menu bar label (DesignBrief: `key.fill` when no role is active). Count and countdown arrive in T3.5.
+/// The label is rendered at launch, so its task also opens Onboarding on first run.
 struct MenuBarLabel: View {
+    @Environment(AccountService.self) private var accounts
+    @Environment(\.openWindow) private var openWindow
+
     var body: some View {
         Image(systemName: "key.fill")
             .accessibilityLabel("AzurePim")
+            .task {
+                if !accounts.settings.onboardingCompleted {
+                    openWindow(id: WindowID.onboarding)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
     }
 }
 
-/// Menu Bar Panel (AppFlow). Step 1 shell: sections and footer only; data arrives in T3.4.
+/// Menu Bar Panel (AppFlow). Data arrives in T3.4; Step 2 shows the signed-in accounts.
 struct MenuBarPanel: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
+    @Query(sort: \Account.sortOrder) private var accountList: [Account]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -19,7 +32,9 @@ struct MenuBarPanel: View {
             Divider()
             VStack(alignment: .leading, spacing: 12) {
                 section("Active") { placeholder("No active role") }
-                section("Eligible") { placeholder("Add an account to get started") }
+                section("Eligible") {
+                    placeholder(accountList.isEmpty ? "Add an account to get started" : "Role list arrives in step 3")
+                }
             }
             .padding(12)
             Divider()
@@ -32,10 +47,18 @@ struct MenuBarPanel: View {
         HStack {
             Text("AzurePim").font(.headline)
             Spacer()
-            Text("Not signed in").font(.caption).foregroundStyle(.secondary)
+            Text(accountSummary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private var accountSummary: String {
+        switch accountList.count {
+        case 0: "Not signed in"
+        case 1: accountList[0].upn
+        default: "\(accountList.count) accounts"
+        }
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
