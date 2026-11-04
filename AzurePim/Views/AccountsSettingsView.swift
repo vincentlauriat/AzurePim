@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 /// Accounts Settings (AppFlow): add/remove accounts, mode badge, Entra status, custom client id, preferences.
 struct AccountsSettingsView: View {
     @Environment(AccountService.self) private var service
+    @Environment(RoleStore.self) private var store
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
     @State private var busy = false
     @State private var error: String?
@@ -56,7 +57,12 @@ struct AccountsSettingsView: View {
         error = nil
         Task {
             defer { busy = false }
-            do { _ = try await action() } catch { self.error = AccountService.message(for: error) }
+            do {
+                _ = try await action()
+                await store.refresh()
+            } catch {
+                self.error = AccountService.message(for: error)
+            }
         }
     }
 }
