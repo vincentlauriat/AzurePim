@@ -25,7 +25,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     }
 }
 
-/// Main window: Roles Window, History Window, Favorites Window (AppFlow). Step 1 shell.
+/// Main window: Roles Window, History Window, Favorites Window (AppFlow).
 struct MainWindow: View {
     @State private var selection: SidebarItem? = .roles
 
@@ -36,11 +36,11 @@ struct MainWindow: View {
             }
             .navigationSplitViewColumnWidth(180)
         } detail: {
-            ContentUnavailableView(
-                selection?.rawValue ?? "AzurePim",
-                systemImage: selection?.symbol ?? "key.fill",
-                description: Text("Add an account to get started.")
-            )
+            switch selection ?? .roles {
+            case .roles: RolesView()
+            case .history: HistoryView()
+            case .favorites: FavoritesView()
+            }
         }
         .background(shortcuts)
         .onAppear { DockPolicy.mainWindowDidOpen() }

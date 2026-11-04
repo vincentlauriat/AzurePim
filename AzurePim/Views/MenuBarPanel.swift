@@ -46,34 +46,6 @@ struct MenuBarLabel: View {
     }
 }
 
-enum Countdown {
-    static func short(_ seconds: TimeInterval) -> String {
-        let total = max(0, Int(seconds))
-        if total < 300 { return String(format: "%d:%02d", total / 60, total % 60) }
-        return String(format: "%d:%02d", total / 3600, (total % 3600) / 60)
-    }
-
-    static func long(_ seconds: TimeInterval) -> String {
-        let total = max(0, Int(seconds))
-        let hours = total / 3600, minutes = (total % 3600) / 60
-        if total < 300 { return String(format: "%d:%02d left", total / 60, total % 60) }
-        return hours > 0 ? "\(hours) h \(String(format: "%02d", minutes)) left" : "\(minutes) min left"
-    }
-
-    static func spoken(_ seconds: TimeInterval?) -> String {
-        guard let seconds else { return "unknown" }
-        let minutes = max(0, Int(seconds) / 60)
-        return minutes >= 60 ? "\(minutes / 60) hours \(minutes % 60) minutes" : "\(minutes) minutes"
-    }
-
-    static func color(_ seconds: TimeInterval?) -> Color {
-        guard let seconds else { return .primary }
-        if seconds <= 300 { return .red }
-        if seconds <= 900 { return .orange }
-        return .primary
-    }
-}
-
 /// Menu Bar Panel (AppFlow): Active, Eligible (grouped by account), header with refresh, footer.
 struct MenuBarPanel: View {
     @Environment(RoleStore.self) private var store
@@ -81,9 +53,19 @@ struct MenuBarPanel: View {
     @Environment(\.openSettings) private var openSettings
     @Query(sort: \Account.sortOrder) private var accountList: [Account]
     @Query(sort: \ActiveAssignment.endAt) private var assignments: [ActiveAssignment]
+    @Query(sort: \Favorite.sortOrder) private var favorites: [Favorite]
+    @Query(filter: #Predicate<ActivationRecord> { $0.statusRaw == "pendingApproval" }) private var pendingRecords: [ActivationRecord]
     @State private var activating: EligibleRole?
 
-    private var activations: [ActiveAssignment] { assignments.filter { $0.assignmentType == .activated } }
+    /// Accounts shown, after the header account filter (T4.4).
+    private var shownAccounts: [Account] {
+        guard let filter = store.accountFilter, accountList.contains(where: { $0.id == filter }) else { return accountList }
+        return accountList.filter { $0.id == filter }
+    }
+    private var activations: [ActiveAssignment] {
+        let shown = Set(shownAccounts.map(\.id))
+        return assignments.filter { $0.assignmentType == .activated && $0.account.map { shown.contains($0.id) } == true }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -95,6 +77,7 @@ struct MenuBarPanel: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         errorBanners
+                        favoritesSection
                         activeSection
                         eligibleSection
                     }
@@ -118,7 +101,19 @@ struct MenuBarPanel: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text("AzurePim").font(.headline)
-                Text(accountSummary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if accountList.count > 1 {
+                    @Bindable var store = store
+                    Picker("Account", selection: $store.accountFilter) {
+                        Text("All accounts (\(accountList.count))").tag(UUID?.none)
+                        ForEach(accountList) { Text($0.tenantName ?? $0.upn).tag(UUID?.some($0.id)) }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .controlSize(.small)
+                    .fixedSize()
+                } else {
+                    Text(accountSummary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
             Spacer()
             if store.isRefreshing {
@@ -180,8 +175,49 @@ struct MenuBarPanel: View {
 
     // MARK: Sections
 
+    @ViewBuilder private var favoritesSection: some View {
+        if !favorites.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(favorites) { favorite in
+                            Button {
+                                Task { await store.run(favorite) }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    if store.runningFavorites.contains(favorite.id) {
+                                        ProgressView().controlSize(.mini)
+                                    } else {
+                                        Image(systemName: "star.fill").imageScale(.small)
+                                    }
+                                    Text(favorite.name).lineLimit(1)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(favorite.items.isEmpty || store.runningFavorites.contains(favorite.id))
+                            .help("Activate \(favorite.items.count) role(s)")
+                        }
+                    }
+                }
+                if let toast = store.favoriteToast {
+                    HStack(alignment: .top) {
+                        Text("\(toast.name): \(toast.text)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        Spacer()
+                        Button {
+                            store.favoriteToast = nil
+                        } label: {
+                            Image(systemName: "xmark").imageScale(.small)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+        }
+    }
+
     @ViewBuilder private var errorBanners: some View {
-        ForEach(accountList) { account in
+        ForEach(shownAccounts) { account in
             ForEach(Array((store.refreshErrors[account.id] ?? [:]).sorted { $0.key.rawValue < $1.key.rawValue }), id: \.key) { _, message in
                 Label {
                     Text(accountList.count > 1 ? "\(account.upn): \(message)" : message).font(.caption)
@@ -213,8 +249,8 @@ struct MenuBarPanel: View {
                     openSettings()
                 }
             }
-            ForEach(accountList) { account in
-                if accountList.count > 1 {
+            ForEach(shownAccounts) { account in
+                if shownAccounts.count > 1 {
                     Text(account.tenantName ?? account.tenantId).font(.caption.weight(.semibold)).padding(.top, 4)
                 }
                 let roles = account.eligibleRoles.sorted {
@@ -224,7 +260,8 @@ struct MenuBarPanel: View {
                     Text("No eligible PIM role for \(account.upn)").font(.callout).foregroundStyle(.secondary)
                 }
                 ForEach(roles) { role in
-                    EligibleRow(role: role, isActive: activations.contains { $0.eligibleRole?.id == role.id }) {
+                    EligibleRow(role: role, isActive: activations.contains { $0.eligibleRole?.id == role.id },
+                                isPending: pendingRecords.contains { $0.eligibleRoleId == role.id }) {
                         activating = role
                     }
                 }
@@ -238,122 +275,6 @@ struct MenuBarPanel: View {
                     .buttonStyle(.link)
                     .font(.callout)
                 }
-            }
-        }
-    }
-}
-
-private struct PanelSection<Content: View>: View {
-    let title: String
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            content
-        }
-    }
-}
-
-enum SourceIcon {
-    static func name(_ source: RoleSource) -> String {
-        switch source {
-        case .azureResource: "cloud"
-        case .entraRole: "person.badge.key"
-        case .pimGroup: "person.3"
-        }
-    }
-}
-
-private struct EligibleRow: View {
-    @Environment(RoleStore.self) private var store
-    let role: EligibleRole
-    let isActive: Bool
-    let activate: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
-                Image(systemName: SourceIcon.name(role.source)).frame(width: 18).foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(role.roleName).lineLimit(1)
-                    Text(role.scopeName + (role.memberType == .group ? " · via group" : ""))
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                }
-                Spacer()
-                if store.busy.contains(role.id) {
-                    ProgressView().controlSize(.small)
-                } else if isActive {
-                    Text("Active").font(.caption).foregroundStyle(.green)
-                } else {
-                    Button("Activate", action: activate).controlSize(.small)
-                }
-            }
-            .frame(minHeight: 32)
-            if let error = store.rowErrors[role.id] {
-                Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct ActiveRow: View {
-    @Environment(RoleStore.self) private var store
-    let assignment: ActiveAssignment
-    @State private var confirming = false
-
-    /// Azure refuses deactivation within 5 minutes of activation (BackendSchema › business rules).
-    private var tooRecent: Bool { Date.now.timeIntervalSince(assignment.startAt) < 300 }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
-                Image(systemName: SourceIcon.name(assignment.source)).frame(width: 18).foregroundStyle(.green)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(assignment.roleName).lineLimit(1)
-                    Text(assignment.scopeName).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                }
-                Spacer()
-                if let end = assignment.endAt {
-                    let remaining = end.timeIntervalSince(store.now)
-                    Text(Countdown.long(remaining))
-                        .font(.callout.monospacedDigit())
-                        .foregroundStyle(remaining <= 900 ? Countdown.color(remaining) : .secondary)
-                }
-                if store.busy.contains(assignment.id) {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Button {
-                        confirming = true
-                    } label: {
-                        Image(systemName: "stop.circle")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(tooRecent)
-                    .help(tooRecent ? "Can't deactivate within 5 minutes of activation" : "Deactivate")
-                    .popover(isPresented: $confirming) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Deactivate \(assignment.roleName)?").font(.headline)
-                            Text(assignment.scopeName).font(.caption).foregroundStyle(.secondary)
-                            HStack {
-                                Spacer()
-                                Button("Cancel") { confirming = false }
-                                Button("Deactivate", role: .destructive) {
-                                    confirming = false
-                                    Task { await store.deactivate(assignment) }
-                                }
-                                .keyboardShortcut(.defaultAction)
-                            }
-                        }
-                        .padding(14)
-                        .frame(width: 260)
-                    }
-                }
-            }
-            .frame(minHeight: 32)
-            if let error = store.rowErrors[assignment.id] {
-                Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
             }
         }
     }

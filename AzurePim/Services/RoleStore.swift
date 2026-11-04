@@ -6,9 +6,9 @@ import SwiftData
 @MainActor
 @Observable
 final class RoleStore {
-    private let context: ModelContext
+    let context: ModelContext
     private let accounts: AccountService
-    private let notifications: NotificationScheduler
+    let notifications: NotificationScheduler
     private var autoRefresh: Task<Void, Never>?
 
     private(set) var isRefreshing = false
@@ -17,12 +17,22 @@ final class RoleStore {
     private(set) var refreshErrors: [UUID: [RoleSource: String]] = [:]
     /// Rows with a request in flight, and the last error per row (local EligibleRole / ActiveAssignment id).
     private(set) var busy: Set<String> = []
-    private(set) var rowErrors: [String: String] = [:]
+    var rowErrors: [String: String] = [:]
     /// When the panel was last opened (Activation timing).
     var panelOpenedAt: Date?
     /// Clock for countdowns: ticks every 30 s, every second in the last 5 minutes before an expiry (TRD › Performance).
     private(set) var now = Date.now
     private var clock: Task<Void, Never>?
+    /// Requests waiting for an approver, per account (History Window), and the last error fetching them.
+    var pending: [UUID: [RemoteRequest]] = [:]
+    private(set) var pendingErrors: [UUID: String] = [:]
+    /// Favorites being run, and the last result toast per favorite.
+    var runningFavorites: Set<UUID> = []
+    var favoriteToast: (name: String, text: String)?
+    /// Last activation error per role, with whether it means "already active" (extend fallback).
+    var lastActivationError: [String: (text: String, alreadyActive: Bool)] = [:]
+    /// Account filter of the panel (nil = all accounts, T4.4).
+    var accountFilter: UUID?
 
     init(context: ModelContext, accounts: AccountService, notifications: NotificationScheduler) {
         self.context = context
@@ -73,6 +83,7 @@ final class RoleStore {
             await refresh(account)
         }
         lastRefresh = .now
+        purgeHistory()
         try? context.save()
         await notifications.reschedule(activations: activeActivations(), leadMinutes: accounts.settings.notificationLeadMinutes)
     }
@@ -98,6 +109,41 @@ final class RoleStore {
         apply(snapshot, to: account, failedSources: Set(snapshot.errors.keys))
         account.lastRefreshAt = snapshot.fetchedAt
         await refreshPolicies(of: account, service: service)
+        await refreshPending(of: account, service: service, failedSources: Set(snapshot.errors.keys))
+    }
+
+    /// Pending approvals: lists them, and updates local records whose request was decided meanwhile (T4.3).
+    private func refreshPending(of account: Account, service: PIMService, failedSources: Set<RoleSource>) async {
+        var list: [RemoteRequest] = []
+        var failure: String?
+        for source in service.sources where !failedSources.contains(source.source) {
+            do {
+                list += try await source.pendingRequests()
+            } catch {
+                failure = Self.message(for: error)
+            }
+        }
+        pending[account.id] = list.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+        pendingErrors[account.id] = failure
+        let open = Set(list.map { $0.id.lowercased() })
+        for record in account.records where record.status == .pendingApproval {
+            guard let requestId = record.remoteRequestId, !open.contains(requestId.lowercased()),
+                  let source = service.source(for: record.source),
+                  let status = try? await source.status(ofRequest: requestId), status != .pendingApproval else { continue }
+            record.status = status
+            if status == .provisioned { record.completedAt = .now }
+            await notifications.notify(title: "\(record.roleName) — \(record.scopeName)",
+                                       body: status == .provisioned ? "Request approved: the role is active."
+                                           : "Request \(status.rawValue).")
+        }
+    }
+
+    /// Deletes history older than the retention setting (pending requests are kept).
+    private func purgeHistory() {
+        let records = (try? context.fetch(FetchDescriptor<ActivationRecord>())) ?? []
+        for record in Retention.expired(records, days: accounts.settings.historyRetentionDays) {
+            context.delete(record)
+        }
     }
 
     /// Replaces the cache of one account. Sources that failed keep their previous rows (offline / throttled).
@@ -140,7 +186,7 @@ final class RoleStore {
         }
     }
 
-    private func sources(for account: Account) throws -> [any PIMSource] {
+    func sources(for account: Account) throws -> [any PIMSource] {
         let provider = try accounts.provider(for: account)
         let tenantId = account.tenantId
         return PIMService.sources(token: { resource, claims in
@@ -151,16 +197,21 @@ final class RoleStore {
     // MARK: - Actions
 
     /// Sends an activation request; returns the outcome status, or nil on failure (error stored per row).
+    /// `fromPanel` false for deep links and notification actions: no `panelOpenedAt`, so the record stays out of
+    /// the time-to-activation median. `refreshAfter` false when the caller refreshes once after a batch.
     @discardableResult
-    func activate(_ role: EligibleRole, input: ActivationInput, viaFavorite: String? = nil) async -> RequestStatus? {
+    func activate(_ role: EligibleRole, input: ActivationInput, viaFavorite: String? = nil, fromPanel: Bool = true,
+                  action: ActivationAction = .activate, refreshAfter: Bool = true) async -> RequestStatus? {
         guard let account = role.account else { return nil }
         busy.insert(role.id)
         rowErrors[role.id] = nil
+        lastActivationError[role.id] = nil
         defer { busy.remove(role.id) }
         let record = ActivationRecord(account: account, eligibleRoleId: role.id, roleName: role.roleName,
-                                      scopeName: role.scopeName, source: role.source, action: .activate,
+                                      scopeName: role.scopeName, source: role.source, action: action,
                                       requestedDuration: input.duration, justification: input.justification,
-                                      ticketNumber: input.ticketNumber, panelOpenedAt: panelOpenedAt, viaFavorite: viaFavorite)
+                                      ticketNumber: input.ticketNumber, panelOpenedAt: fromPanel ? panelOpenedAt : nil,
+                                      viaFavorite: viaFavorite)
         context.insert(record)
         do {
             guard let source = try PIMService(sources: sources(for: account)).source(for: role.source) else {
@@ -172,21 +223,23 @@ final class RoleStore {
             if outcome.status == .provisioned { record.completedAt = .now }
             role.lastJustification = input.justification
             try? context.save()
-            await refresh()
+            if refreshAfter { await refresh() }
             return outcome.status
         } catch {
             record.status = .failed
             record.errorMessage = Self.message(for: error)
             rowErrors[role.id] = record.errorMessage
+            lastActivationError[role.id] = (Self.message(for: error), ExtendPlan.isAlreadyActive(error))
             try? context.save()
             return nil
         }
     }
 
-    func deactivate(_ assignment: ActiveAssignment) async {
+    @discardableResult
+    func deactivate(_ assignment: ActiveAssignment, refreshAfter: Bool = true) async -> Bool {
         guard let account = assignment.account, let role = assignment.eligibleRole else {
             rowErrors[assignment.id] = "This assignment is permanent and cannot be deactivated."
-            return
+            return false
         }
         busy.insert(assignment.id)
         rowErrors[assignment.id] = nil
@@ -203,12 +256,14 @@ final class RoleStore {
             record.status = outcome.status == .failed ? .failed : .provisioned
             record.completedAt = .now
             try? context.save()
-            await refresh()
+            if refreshAfter { await refresh() }
+            return record.status == .provisioned
         } catch {
             record.status = .failed
             record.errorMessage = Self.message(for: error)
             rowErrors[assignment.id] = record.errorMessage
             try? context.save()
+            return false
         }
     }
 
