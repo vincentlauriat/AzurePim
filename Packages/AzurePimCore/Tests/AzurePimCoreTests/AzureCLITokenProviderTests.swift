@@ -56,6 +56,18 @@ struct AzureCLITokenProviderTests {
         #expect(provider.locateCLI()?.path == URL(fileURLWithPath: path).resolvingSymlinksInPath().path)
     }
 
+    /// A file directly in a root-owned sticky folder (/tmp-like) is refused; a group-writable non-admin folder too.
+    @Test func trustChainRules() throws {
+        let fileManager = FileManager.default
+        #expect(!Validation.isTrustedChain(URL(fileURLWithPath: "/private/tmp/az"), fileManager: fileManager)
+            || !fileManager.fileExists(atPath: "/private/tmp/az"))
+        #expect(Validation.isTrustedChain(URL(fileURLWithPath: "/bin/sh"), fileManager: fileManager))
+        let path = try makeAZ(folderMode: 0o775)
+        let gid = (try fileManager.attributesOfItem(atPath: (path as NSString).deletingLastPathComponent)[.groupOwnerAccountID]
+            as? NSNumber)?.uint32Value ?? 0
+        #expect(Validation.isTrustedChain(URL(fileURLWithPath: path), fileManager: fileManager) == (gid == 0 || gid == 80))
+    }
+
     /// A trusted link pointing into a world-writable folder is refused: the target is checked, not only the link.
     @Test func refusesLinkToUntrustedTarget() throws {
         let target = try makeAZ(folderMode: 0o777)

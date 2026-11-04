@@ -74,19 +74,34 @@ public enum Validation {
         return nil
     }
 
-    /// The item and all its ancestors: readable attributes, owner root or current user, not world-writable
-    /// (except root-owned sticky folders such as /tmp, where others cannot replace the user's file).
+    /// The configured `az`, resolved once: the returned path is the exact string that was validated and that runs.
+    public static func trustedAZ(_ path: String, fileManager: FileManager = .default) -> String? {
+        let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        guard azPath(path, fileManager: fileManager) == nil,
+              resolved == URL(fileURLWithPath: resolved).resolvingSymlinksInPath().path,
+              isTrustedChain(URL(fileURLWithPath: resolved), fileManager: fileManager) else { return nil }
+        return resolved
+    }
+
+    /// The item and all its ancestors: readable attributes, owner root or current user, not world-writable, and
+    /// group-writable only for wheel (0) or admin (80) — admins can already act as root; Homebrew's prefix is
+    /// admin-writable. Root-owned sticky folders (/tmp) are tolerated as distant ancestors only, never as the
+    /// executable's own folder. Extended ACLs are not inspected (accepted risk, TRD › Security).
     static func isTrustedChain(_ url: URL, fileManager: FileManager) -> Bool {
         var item = url.standardizedFileURL
+        var depth = 0
         while true {
             guard let attributes = try? fileManager.attributesOfItem(atPath: item.path),
                   let mode = attributes[.posixPermissions] as? Int,
-                  let owner = (attributes[.ownerAccountID] as? NSNumber)?.uint32Value else { return false }
+                  let owner = (attributes[.ownerAccountID] as? NSNumber)?.uint32Value,
+                  let group = (attributes[.groupOwnerAccountID] as? NSNumber)?.uint32Value else { return false }
             guard owner == 0 || owner == getuid() else { return false }
-            let stickyRoot = mode & 0o1000 != 0 && owner == 0
+            if mode & 0o020 != 0 && group != 0 && group != 80 { return false }
+            let stickyRoot = mode & 0o1000 != 0 && owner == 0 && depth >= 2
             if mode & 0o002 != 0 && !stickyRoot { return false }
             if item.path == "/" { return true }
             item = item.deletingLastPathComponent()
+            depth += 1
         }
     }
 }
