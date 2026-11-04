@@ -46,7 +46,8 @@ struct MenuBarLabel: View {
     }
 }
 
-/// Menu Bar Panel (AppFlow): Active, Eligible (grouped by account), header with refresh, footer.
+/// Menu Bar Panel (AppFlow), in the Juicy / Claude Cockpit look: a hero card with the active count and the next
+/// expiry, collapsible cards (Active roles, Favorites, Eligible roles) and a settings-style action list.
 struct MenuBarPanel: View {
     @Environment(RoleStore.self) private var store
     @Environment(\.openWindow) private var openWindow
@@ -56,9 +57,13 @@ struct MenuBarPanel: View {
     @Query(sort: \Favorite.sortOrder) private var favorites: [Favorite]
     @Query(filter: #Predicate<ActivationRecord> { $0.statusRaw == "pendingApproval" }) private var pendingRecords: [ActivationRecord]
     @State private var activating: EligibleRole?
+    @State private var contentHeight: CGFloat = 0
+    @AppStorage("panel.showActive") private var showActive = true
     @AppStorage("panel.showPermanent") private var showPermanent = true
+    @AppStorage("panel.showFavorites") private var showFavorites = true
+    @AppStorage("panel.showEligible") private var showEligible = true
 
-    /// Accounts shown, after the header account filter (T4.4).
+    /// Accounts shown, after the account filter (T4.4).
     private var shownAccounts: [Account] {
         guard let filter = store.accountFilter, accountList.contains(where: { $0.id == filter }) else { return accountList }
         return accountList.filter { $0.id == filter }
@@ -68,135 +73,136 @@ struct MenuBarPanel: View {
     private var permanents: [ActiveAssignment] {
         shownAssignments(.assigned).sorted { ($0.roleName, $0.scopeName) < ($1.roleName, $1.scopeName) }
     }
+    private var eligibleCount: Int { shownAccounts.reduce(0) { $0 + $1.eligibleRoles.count } }
 
     private func shownAssignments(_ type: AssignmentType) -> [ActiveAssignment] {
         let shown = Set(shownAccounts.map(\.id))
         return assignments.filter { $0.assignmentType == type && $0.account.map { shown.contains($0.id) } == true }
     }
 
+    /// The panel must fit under the menu bar; past ~640 pt the main window is the better place.
+    private var maxHeight: CGFloat {
+        max(320, min(640, (NSScreen.main?.visibleFrame.height ?? 800) - 24))
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Group {
             if let role = activating {
                 ActivationSheet(role: role) { activating = nil }
+                    .frame(width: Theme.panelWidth)
             } else {
-                header
-                Divider()
-                // Active roles are pinned at the top, readable at first glance without scrolling.
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        errorBanners
-                        activeSection
-                    }
-                    .padding(12)
+                ScrollView(.vertical) {
+                    content
+                        .background(GeometryReader { geo in
+                            Color.clear.preference(key: PanelHeightKey.self, value: geo.size.height)
+                        })
                 }
-                .frame(maxHeight: 260)
-                .fixedSize(horizontal: false, vertical: true)
-                Divider()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        FavoriteChips(favorites: favorites)
-                        eligibleSection
-                    }
-                    .padding(12)
-                }
-                .frame(maxHeight: 300)
-                Divider()
-                footer
+                .scrollBounceBehavior(.basedOnSize)
+                .onPreferenceChange(PanelHeightKey.self) { contentHeight = $0 }
+                .frame(width: Theme.panelWidth, height: min(contentHeight > 0 ? contentHeight : 520, maxHeight))
             }
         }
-        .frame(width: 360)
         .background(WindowKeyObserver {
             store.panelOpenedAt = .now
             Task { await store.refreshIfStale() }
         })
     }
 
-    // MARK: Header / footer
+    private var content: some View {
+        VStack(spacing: 8) {
+            heroCard
+            errorBanners
+            activeCard
+            if !favorites.isEmpty { favoritesCard }
+            eligibleCard
+            PanelActionList()
+        }
+        .padding(10)
+    }
 
-    private var header: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("AzurePim").font(.headline)
-                if accountList.count > 1 {
-                    @Bindable var store = store
-                    Picker("Account", selection: $store.accountFilter) {
-                        Text("All accounts (\(accountList.count))").tag(UUID?.none)
-                        ForEach(accountList) { Text($0.tenantName ?? $0.upn).tag(UUID?.some($0.id)) }
+    // MARK: Hero
+
+    /// The activation that expires first, with its fraction of time left.
+    private var nextActivation: NextActivation? {
+        guard let next = activations.filter({ ($0.endAt ?? .distantPast) > store.now }).min(by: {
+            ($0.endAt ?? .distantFuture) < ($1.endAt ?? .distantFuture)
+        }), let end = next.endAt else { return nil }
+        let remaining = end.timeIntervalSince(store.now)
+        let total = max(1, end.timeIntervalSince(next.startAt))
+        return NextActivation(assignment: next, remaining: remaining, fraction: remaining / total)
+    }
+
+    private var heroCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("\(activations.count)")
+                            .font(.display(52))
+                            .monospacedDigit()
+                            .foregroundStyle(activations.isEmpty ? Color.secondary : Theme.active)
+                        Text("active")
+                            .font(.display(18, weight: .semibold))
+                            .foregroundStyle(activations.isEmpty ? Color.secondary : Theme.active)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .controlSize(.small)
-                    .fixedSize()
-                } else {
-                    Text(accountSummary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    HStack(spacing: 6) {
+                        Image(systemName: activations.isEmpty ? "key.fill" : "key.horizontal.fill")
+                            .foregroundStyle(activations.isEmpty ? Color.secondary : Theme.active)
+                        Text(heroSubtitle).font(.system(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                    }
+                }
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 4) {
+                    if let next = nextActivation {
+                        SectionLabel(text: "Expires in")
+                        Text(Countdown.hero(next.remaining))
+                            .font(.display(20, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(next.remaining <= 900 ? Theme.remaining(next.remaining) : Color.primary)
+                    } else {
+                        SectionLabel(text: "Permanent")
+                        Text("\(permanents.count)").font(.display(20, weight: .semibold)).monospacedDigit()
+                    }
+                    statusLine
                 }
             }
-            Spacer()
-            if store.isRefreshing {
-                ProgressView().controlSize(.small)
-            } else if store.isOffline {
-                Label(offlineText, systemImage: "wifi.slash").font(.caption).foregroundStyle(.orange)
-                    .help("Actions are disabled until the network is back")
-            } else if let last = store.lastRefresh {
-                Text(last, format: .dateTime.hour().minute()).font(.caption).foregroundStyle(.secondary)
-                    .help("Last updated")
+            if let next = nextActivation {
+                ProgressTrack(fraction: next.fraction, tint: Theme.remaining(next.remaining))
             }
-            Button {
-                Task { await store.refresh() }
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise").labelStyle(.iconOnly)
-            }
-            .buttonStyle(.borderless)
-            .keyboardShortcut("r")
-            .disabled(store.isRefreshing)
-            .help("Refresh (⌘R)")
+            if accountList.count > 1 { accountPicker }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(16)
+        .card()
+        .accessibilityElement(children: .combine)
     }
 
-    private var accountSummary: String {
-        switch accountList.count {
-        case 0: "Not signed in"
-        case 1: accountList[0].upn
-        default: "\(accountList.count) accounts"
+    private var heroSubtitle: String {
+        if accountList.isEmpty { return "Not signed in" }
+        if let next = nextActivation { return "\(next.assignment.roleName) · \(next.assignment.scopeName)" }
+        return activations.isEmpty ? "No PIM activation" : "PIM roles active"
+    }
+
+    @ViewBuilder private var statusLine: some View {
+        if store.isRefreshing {
+            ProgressView().controlSize(.small)
+        } else if store.isOffline {
+            Label(offlineText, systemImage: "wifi.slash").font(.system(size: 11)).foregroundStyle(Theme.warning)
+                .help("Actions are disabled until the network is back")
+        } else if let last = store.lastRefresh {
+            Text("Updated \(last.formatted(date: .omitted, time: .shortened))")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
         }
     }
 
-    private var footer: some View {
-        HStack(spacing: 12) {
-            Button("Open AzurePim…") {
-                openWindow(id: WindowID.main)
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            .keyboardShortcut("0")
-            Spacer()
-            Button {
-                NSApp.activate(ignoringOtherApps: true)
-                openSettings()
-            } label: {
-                Label("Settings", systemImage: "gearshape").labelStyle(.iconOnly)
-            }
-            .help("Settings")
-            .keyboardShortcut(",")
-            Button {
-                NSApp.terminate(nil)
-            } label: {
-                Label("Quit AzurePim", systemImage: "power").labelStyle(.iconOnly)
-            }
-            .help("Quit AzurePim")
-            .keyboardShortcut("q")
+    private var accountPicker: some View {
+        @Bindable var store = store
+        return Picker("Account", selection: $store.accountFilter) {
+            Text("All accounts (\(accountList.count))").tag(UUID?.none)
+            ForEach(accountList) { Text($0.tenantName ?? $0.upn).tag(UUID?.some($0.id)) }
         }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-
-    // MARK: Sections
-
-    private func bannerKinds(_ account: Account) -> [ErrorKind] {
-        let kinds: Set<ErrorKind> = Set((store.refreshErrors[account.id] ?? [:]).values)
-        return kinds.filter { $0 != .offline }.sorted { $0.message < $1.message }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .controlSize(.small)
     }
 
     private var offlineText: String {
@@ -204,7 +210,14 @@ struct MenuBarPanel: View {
         return "Offline — data from \(last.formatted(date: .omitted, time: .shortened))"
     }
 
-    /// One banner per distinct problem (Offline is shown in the header instead).
+    // MARK: Banners
+
+    private func bannerKinds(_ account: Account) -> [ErrorKind] {
+        let kinds: Set<ErrorKind> = Set((store.refreshErrors[account.id] ?? [:]).values)
+        return kinds.filter { $0 != .offline }.sorted { $0.message < $1.message }
+    }
+
+    /// One banner per distinct problem (Offline is shown in the hero card instead).
     @ViewBuilder private var errorBanners: some View {
         ForEach(shownAccounts) { account in
             ForEach(bannerKinds(account), id: \.message) { kind in
@@ -213,38 +226,37 @@ struct MenuBarPanel: View {
         }
     }
 
-    private var activeTitle: String {
-        let total = activations.count + permanents.count
-        return total == 0 ? "Active" : "Active (\(total))"
-    }
+    // MARK: Cards
 
-    private var activeSection: some View {
-        PanelSection(title: activeTitle) {
+    private var activeCard: some View {
+        DisclosureCard(title: "Active roles", icon: "bolt.fill", iconColor: Theme.active,
+                       count: activations.count + permanents.count, expanded: $showActive) {
             if activations.isEmpty && permanents.isEmpty {
-                Text("No active role").font(.callout).foregroundStyle(.secondary)
-            } else if activations.isEmpty {
-                Text("No PIM activation").font(.callout).foregroundStyle(.secondary)
+                EmptyLine(text: accountList.isEmpty ? "Add an account to see your roles" : "No active role")
             }
-            ForEach(activations) { assignment in
+            ForEach(Array(activations.enumerated()), id: \.element.id) { index, assignment in
+                if index > 0 { RowDivider() }
                 ActiveRow(assignment: assignment)
             }
             if !permanents.isEmpty {
+                if !activations.isEmpty { RowDivider(inset: 0) }
                 Button {
-                    showPermanent.toggle()
+                    withAnimation(.easeInOut(duration: 0.18)) { showPermanent.toggle() }
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: showPermanent ? "chevron.down" : "chevron.right").imageScale(.small)
-                        Text("Permanent (\(permanents.count))")
+                    HStack(spacing: 6) {
+                        SectionLabel(text: "Permanent · \(permanents.count)")
+                        Spacer()
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(showPermanent ? 0 : -90))
                     }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .frame(height: 28)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .padding(.top, 2)
                 .accessibilityLabel(showPermanent ? "Hide permanent roles" : "Show permanent roles")
                 if showPermanent {
-                    ForEach(permanents) { assignment in
+                    ForEach(Array(permanents.enumerated()), id: \.element.id) { index, assignment in
+                        if index > 0 { RowDivider() }
                         PermanentRow(assignment: assignment, showAccount: shownAccounts.count > 1)
                     }
                 }
@@ -252,26 +264,39 @@ struct MenuBarPanel: View {
         }
     }
 
-    private var eligibleSection: some View {
-        PanelSection(title: "Eligible") {
+    private var favoritesCard: some View {
+        DisclosureCard(title: "Favorites", icon: "star.fill", iconColor: Theme.violet,
+                       count: favorites.count, expanded: $showFavorites) {
+            FavoriteChips(favorites: favorites)
+        }
+    }
+
+    private var eligibleCard: some View {
+        DisclosureCard(title: "Eligible roles", icon: "key.horizontal.fill", iconColor: Theme.accent,
+                       count: eligibleCount, expanded: $showEligible) {
             if accountList.isEmpty {
-                Text("Add an account to get started").font(.callout).foregroundStyle(.secondary)
                 Button("Add an account…") {
                     NSApp.activate(ignoringOtherApps: true)
                     openSettings()
                 }
+                .padding(.vertical, 6)
             }
             ForEach(shownAccounts) { account in
                 if shownAccounts.count > 1 {
-                    Text(account.tenantName ?? account.tenantId).font(.caption.weight(.semibold)).padding(.top, 4)
+                    HStack {
+                        SectionLabel(text: account.tenantName ?? account.tenantId)
+                        Spacer()
+                    }
+                    .padding(.top, 6)
                 }
                 let roles = account.eligibleRoles.sorted {
                     ($0.sourceRaw, $0.roleName, $0.scopeName) < ($1.sourceRaw, $1.roleName, $1.scopeName)
                 }
                 if roles.isEmpty, account.lastRefreshAt != nil {
-                    Text("No eligible PIM role for \(account.upn)").font(.callout).foregroundStyle(.secondary)
+                    EmptyLine(text: "No eligible PIM role for \(account.upn)")
                 }
-                ForEach(roles) { role in
+                ForEach(Array(roles.enumerated()), id: \.element.id) { index, role in
+                    if index > 0 { RowDivider() }
                     EligibleRow(role: role, isActive: activations.contains { $0.eligibleRole?.id == role.id },
                                 isPending: pendingRecords.contains { $0.eligibleRoleId == role.id }) {
                         activating = role
@@ -286,8 +311,21 @@ struct MenuBarPanel: View {
                     }
                     .buttonStyle(.link)
                     .font(.callout)
+                    .padding(.vertical, 6)
                 }
             }
         }
     }
+
+}
+
+private struct NextActivation {
+    let assignment: ActiveAssignment
+    let remaining: TimeInterval
+    let fraction: Double
+}
+
+private struct PanelHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }

@@ -26,6 +26,9 @@ struct AzurePimApp: App {
         // Started at launch, independent of any view (a menu bar label is not guaranteed to run `.task`).
         DeepLinkHandler.store = roleStore
         Task { @MainActor in roleStore.start() }
+        #if DEBUG
+        SnapshotRunner.run(container: container, accounts: accountService, store: roleStore)
+        #endif
     }
 
     var body: some Scene {

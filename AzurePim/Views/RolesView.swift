@@ -33,6 +33,36 @@ struct RolesView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            statStrip
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            Divider()
+            split
+        }
+        .searchable(text: $search, prompt: "Search roles and scopes")
+        .toolbar { toolbarItems }
+        .navigationTitle("Roles")
+    }
+
+    /// Juicy-style KPI tiles: what is active right now, what can be activated.
+    private var statStrip: some View {
+        let activated = assignments.filter { $0.assignmentType == .activated }
+        let next = activated.compactMap(\.endAt).filter { $0 > store.now }.min()
+        return HStack(spacing: 10) {
+            StatTile(label: "Active PIM", value: "\(activated.count)",
+                     note: next.map { "Next expiry in \(Countdown.hero($0.timeIntervalSince(store.now)))" } ?? "No activation",
+                     tint: activated.isEmpty ? .secondary : Theme.active, icon: "bolt.fill")
+            StatTile(label: "Permanent", value: "\(assignments.count - activated.count)",
+                     note: "Managed by your administrator", icon: "lock.fill")
+            StatTile(label: "Eligible", value: "\(roles.count)", note: "Activatable through PIM",
+                     tint: Theme.accent, icon: "key.horizontal.fill")
+            StatTile(label: "Accounts", value: "\(accounts.count)",
+                     note: accounts.first.map { $0.tenantName ?? $0.upn } ?? "None", icon: "person.crop.circle")
+        }
+    }
+
+    private var split: some View {
         HSplitView {
             Table(rows, selection: $selection) {
                 TableColumn("Role") { row in
@@ -61,8 +91,10 @@ struct RolesView: View {
             }
             .frame(minWidth: 260, idealWidth: 300, maxWidth: 380, maxHeight: .infinity)
         }
-        .searchable(text: $search, prompt: "Search roles and scopes")
-        .toolbar {
+    }
+
+    @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {
+        ToolbarItemGroup {
             Picker("Source", selection: $source) {
                 Text("All sources").tag(RoleSource?.none)
                 Text("Azure resources").tag(RoleSource?.some(.azureResource))
@@ -85,7 +117,6 @@ struct RolesView: View {
             }
             .disabled(store.isRefreshing)
         }
-        .navigationTitle("Roles")
     }
 }
 
@@ -151,9 +182,15 @@ private struct RoleDetail: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(row.roleName).font(.title3.weight(.semibold))
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: SourceIcon.name(row.source))
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(row.assignment != nil ? Theme.active : Theme.accent)
+                        Text(row.roleName).font(.display(22, weight: .semibold))
+                    }
                     Text(row.scopeName).foregroundStyle(.secondary)
+                    StateBadge(row: row, now: store.now)
                 }
                 Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 6) {
                     detail("Source", sourceName(row.source))
@@ -167,6 +204,9 @@ private struct RoleDetail: View {
                     }
                 }
                 .font(.callout)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .card()
                 if let role = row.role {
                     policy(role)
                     actions(role)
@@ -193,7 +233,7 @@ private struct RoleDetail: View {
 
     @ViewBuilder private func policy(_ role: EligibleRole) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("POLICY").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            SectionLabel(text: "Policy")
             if role.policyFetchedAt == nil {
                 Text("Policy unavailable").font(.callout).foregroundStyle(.secondary)
             } else {
@@ -207,6 +247,9 @@ private struct RoleDetail: View {
                 .font(.callout)
             }
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
     }
 
     @ViewBuilder private func actions(_ role: EligibleRole) -> some View {
@@ -223,7 +266,7 @@ private struct RoleDetail: View {
                         Text(assignment.scopeName)
                     }
             } else {
-                Button("Activate…") { activating = true }.buttonStyle(.borderedProminent)
+                Button("Activate…") { activating = true }.buttonStyle(.borderedProminent).tint(Theme.accent)
             }
             Menu("Add to favorite") { AddToFavoriteMenu(role: role) }.fixedSize()
         }

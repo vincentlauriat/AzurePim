@@ -14,7 +14,16 @@ struct FavoritesView: View {
         HSplitView {
             List(selection: $selection) {
                 ForEach(favorites) { favorite in
-                    Label(favorite.name, systemImage: "star").tag(favorite.id)
+                    HStack(spacing: 10) {
+                        Image(systemName: "star.fill").foregroundStyle(Theme.violet)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(favorite.name).font(.system(size: 13, weight: .medium))
+                            Text(favorite.items.count == 1 ? "1 role" : "\(favorite.items.count) roles")
+                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                    .tag(favorite.id)
                 }
                 .onMove(perform: move)
             }

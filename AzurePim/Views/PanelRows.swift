@@ -16,6 +16,14 @@ enum Countdown {
         return hours > 0 ? "\(hours) h \(String(format: "%02d", minutes)) left" : "\(minutes) min left"
     }
 
+    /// Hero card value: « 5h 16m », « 42m », « 3:12 » in the last 5 minutes.
+    static func hero(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds))
+        if total < 300 { return String(format: "%d:%02d", total / 60, total % 60) }
+        let hours = total / 3600, minutes = (total % 3600) / 60
+        return hours > 0 ? "\(hours)h \(String(format: "%02d", minutes))m" : "\(minutes)m"
+    }
+
     static func spoken(_ seconds: TimeInterval?) -> String {
         guard let seconds else { return "unknown" }
         let minutes = max(0, Int(seconds) / 60)
@@ -62,9 +70,9 @@ struct EligibleRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
-                Image(systemName: SourceIcon.name(role.source)).frame(width: 18).foregroundStyle(.secondary)
+                Image(systemName: SourceIcon.name(role.source)).frame(width: 22).foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(role.roleName).lineLimit(1)
+                    Text(role.roleName).font(.system(size: 13, weight: .medium)).lineLimit(1)
                     Text(role.scopeName + (role.memberType == .group ? " · via group" : ""))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
@@ -72,17 +80,23 @@ struct EligibleRow: View {
                 if store.busy.contains(role.id) {
                     ProgressView().controlSize(.small)
                 } else if isActive {
-                    Text("Active").font(.caption).foregroundStyle(.green)
+                    Text("Active").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.active)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Theme.active.opacity(0.14), in: Capsule())
                 } else if isPending {
-                    Label("Pending", systemImage: "clock").font(.caption).foregroundStyle(.orange)
+                    Label("Pending", systemImage: "clock").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.warning)
                         .help("Waiting for approval — see History")
                 } else {
-                    Button("Activate", action: activate).controlSize(.small).disabled(store.isOffline)
+                    Button("Activate", action: activate)
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.accent)
+                        .controlSize(.small)
+                        .disabled(store.isOffline)
                 }
             }
-            .frame(minHeight: 32)
+            .frame(minHeight: 40)
             if let error = store.rowErrors[role.id] {
-                Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                Text(error).font(.caption).foregroundStyle(Theme.danger).textSelection(.enabled).padding(.leading, 30).padding(.bottom, 4)
             }
         }
         .accessibilityElement(children: .combine)
@@ -100,17 +114,21 @@ struct ActiveRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
-                Image(systemName: SourceIcon.name(assignment.source)).frame(width: 18).foregroundStyle(.green)
+                Image(systemName: SourceIcon.name(assignment.source)).frame(width: 22).foregroundStyle(Theme.active)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(assignment.roleName).lineLimit(1)
+                    Text(assignment.roleName).font(.system(size: 13, weight: .medium)).lineLimit(1)
                     Text(assignment.scopeName).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
                 Spacer()
                 if let end = assignment.endAt {
                     let remaining = end.timeIntervalSince(store.now)
-                    Text(Countdown.long(remaining))
-                        .font(.callout.monospacedDigit())
-                        .foregroundStyle(remaining <= 900 ? Countdown.color(remaining) : .secondary)
+                    Text(Countdown.hero(remaining))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(Theme.remaining(remaining))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(Theme.remaining(remaining).opacity(0.14), in: Capsule())
+                        .help(Countdown.long(remaining))
                 }
                 if store.busy.contains(assignment.id) {
                     ProgressView().controlSize(.small)
@@ -118,7 +136,9 @@ struct ActiveRow: View {
                     Button {
                         confirming = true
                     } label: {
-                        Label("Deactivate \(assignment.roleName)", systemImage: "stop.circle").labelStyle(.iconOnly)
+                        Label("Deactivate \(assignment.roleName)", systemImage: "stop.circle.fill").labelStyle(.iconOnly)
+                            .font(.system(size: 16))
+                            .foregroundStyle(tooRecent ? Color.secondary : Theme.danger)
                     }
                     .buttonStyle(.borderless)
                     .disabled(tooRecent || store.isOffline)
@@ -142,9 +162,9 @@ struct ActiveRow: View {
                     }
                 }
             }
-            .frame(minHeight: 32)
+            .frame(minHeight: 40)
             if let error = store.rowErrors[assignment.id] {
-                Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                Text(error).font(.caption).foregroundStyle(Theme.danger).textSelection(.enabled).padding(.leading, 30).padding(.bottom, 4)
             }
         }
     }
@@ -157,9 +177,9 @@ struct PermanentRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: SourceIcon.name(assignment.source)).frame(width: 18).foregroundStyle(.secondary)
+            Image(systemName: SourceIcon.name(assignment.source)).frame(width: 22).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 1) {
-                Text(assignment.roleName).lineLimit(1)
+                Text(assignment.roleName).font(.system(size: 13, weight: .medium)).lineLimit(1)
                 Text(showAccount ? "\(assignment.scopeName) · \(assignment.account?.upn ?? "")" : assignment.scopeName)
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             }
@@ -167,7 +187,7 @@ struct PermanentRow: View {
             Image(systemName: "lock").imageScale(.small).foregroundStyle(.tertiary)
                 .help("Permanent assignment, managed by your administrator")
         }
-        .frame(minHeight: 28)
+        .frame(minHeight: 36)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(assignment.roleName), \(assignment.scopeName), permanent")
     }
@@ -182,9 +202,9 @@ struct ErrorBanner: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Label {
-                Text(account.map { "\($0): \(kind.message)" } ?? kind.message).font(.caption)
+                Text(account.map { "\($0): \(kind.message)" } ?? kind.message).font(.system(size: 12))
             } icon: {
-                Image(systemName: icon).foregroundStyle(.orange)
+                Image(systemName: icon).foregroundStyle(Theme.warning)
             }
             .textSelection(.enabled)
             if case .cliExpired(let command) = kind {
@@ -196,6 +216,9 @@ struct ErrorBanner: View {
                 .controlSize(.small)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Theme.warning.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var icon: String {
@@ -232,7 +255,8 @@ struct FavoriteChips: View {
                                 }
                             }
                             .buttonStyle(.bordered)
-                            .controlSize(.small)
+                            .tint(Theme.violet)
+                            .controlSize(.regular)
                             .disabled(favorite.items.isEmpty || store.runningFavorites.contains(favorite.id) || store.isOffline)
                             .help("Activate \(favorite.items.count) role(s)")
                         }

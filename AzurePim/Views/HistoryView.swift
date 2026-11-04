@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 /// History Window (AppFlow, T4.3 + T4.5): local records, requests pending approval, median time-to-activation, CSV export.
 struct HistoryView: View {
     @Environment(RoleStore.self) private var store
+    @Environment(AccountService.self) private var accountService
     @Query(sort: \ActivationRecord.sentAt, order: .reverse) private var records: [ActivationRecord]
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
     @State private var exporting = false
@@ -23,7 +24,7 @@ struct HistoryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            summary.padding(16)
+            summary.padding(.horizontal, 16).padding(.vertical, 12)
             Divider()
             if records.isEmpty && externalPending.isEmpty {
                 ContentUnavailableView("No request yet", systemImage: "clock.arrow.circlepath",
@@ -88,22 +89,19 @@ struct HistoryView: View {
     }
 
     private var summary: some View {
-        HStack(spacing: 24) {
-            stat("Median time to activate", ActivationStats.medianTimeToActivation(records).map { String(format: "%.1f s", $0) } ?? "—",
-                 help: "Panel opened → role provisioned, over activations made from the panel")
-            stat("Activations", "\(records.filter { $0.action != .deactivate && $0.status == .provisioned }.count)")
-            stat("Pending approval", "\(records.filter { $0.status == .pendingApproval }.count + externalPending.count)")
-            Spacer()
+        HStack(spacing: 10) {
+            StatTile(label: "Median time to activate",
+                     value: ActivationStats.medianTimeToActivation(records).map { String(format: "%.1f s", $0) } ?? "—",
+                     note: "Panel opened → role provisioned", tint: Theme.accent, icon: "stopwatch")
+            StatTile(label: "Activations", value: "\(records.filter { $0.action != .deactivate && $0.status == .provisioned }.count)",
+                     note: "Provisioned, kept \(retentionDays) days", tint: Theme.active, icon: "bolt.fill")
+            StatTile(label: "Pending approval",
+                     value: "\(records.filter { $0.status == .pendingApproval }.count + externalPending.count)",
+                     note: "Including requests sent elsewhere", tint: Theme.warning, icon: "clock")
         }
     }
 
-    private func stat(_ title: String, _ value: String, help: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.title2.weight(.semibold).monospacedDigit())
-            Text(title).font(.caption).foregroundStyle(.secondary)
-        }
-        .help(help ?? title)
-    }
+    private var retentionDays: Int { accountService.settings.historyRetentionDays }
 
     @ViewBuilder private func cancelButton(id: String, source: RoleSource, account: Account) -> some View {
         if canceling.contains(id) {

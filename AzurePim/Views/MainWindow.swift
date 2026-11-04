@@ -10,9 +10,17 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .roles: "key.horizontal"
+        case .roles: "key.horizontal.fill"
         case .history: "clock.arrow.circlepath"
-        case .favorites: "star"
+        case .favorites: "star.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .roles: Theme.accent
+        case .history: Theme.warning
+        case .favorites: Theme.violet
         }
     }
 
@@ -27,12 +35,21 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
 /// Main window: Roles Window, History Window, Favorites Window (AppFlow).
 struct MainWindow: View {
-    @State private var selection: SidebarItem? = .roles
+    @State private var selection: SidebarItem?
+
+    init(initial: SidebarItem = .roles) {
+        _selection = State(initialValue: initial)
+    }
 
     var body: some View {
         NavigationSplitView {
             List(SidebarItem.allCases, selection: $selection) { item in
-                Label(item.rawValue, systemImage: item.symbol).tag(item)
+                Label {
+                    Text(item.rawValue)
+                } icon: {
+                    Image(systemName: item.symbol).foregroundStyle(item.tint)
+                }
+                .tag(item)
             }
             .navigationSplitViewColumnWidth(180)
         } detail: {
