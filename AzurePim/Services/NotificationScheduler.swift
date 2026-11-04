@@ -49,8 +49,7 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
             }
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSinceNow, repeats: false)
             let id = Self.prefix + (assignment.eligibleRole?.id ?? assignment.id)
-            // Completion-handler form: the async form sends `center` off the main actor (rejected by Swift 6.1).
-            center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger)) { _ in }
+            await Self.schedule(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
         }
     }
 
@@ -59,7 +58,13 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)) { _ in }
+        await Self.schedule(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+
+    /// Adds a request from outside the main actor: the stored `center` never crosses actors, which Swift 6.1 rejects.
+    /// The request is freshly built by the caller and not used afterwards, so sending it is safe.
+    private nonisolated static func schedule(_ request: UNNotificationRequest) async {
+        try? await UNUserNotificationCenter.current().add(request)
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification)
