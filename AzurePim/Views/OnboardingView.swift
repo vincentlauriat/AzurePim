@@ -6,6 +6,7 @@ import UserNotifications
 /// Onboarding (AppFlow › First use): privacy promise, sign-in mode, notifications + launch at login.
 struct OnboardingView: View {
     @Environment(AccountService.self) private var accounts
+    @Environment(RoleStore.self) private var store
     @Environment(\.dismissWindow) private var dismissWindow
     @State private var page = 0
     @State private var busy = false
@@ -118,6 +119,7 @@ struct OnboardingView: View {
             do {
                 _ = try await action()
                 page = 2
+                await store.refresh()
             } catch {
                 self.error = AccountService.message(for: error)
             }

@@ -56,8 +56,24 @@ struct ModelTests {
         #expect(fetched.eligibleRoles.count == 1)
         #expect(fetched.activeAssignments.first?.eligibleRole?.roleName == "Reader")
         #expect(try context.fetch(FetchDescriptor<Favorite>()).first?.items.first?.duration == "PT4H")
+        #expect(fetched.eligibleRoles.first?.remoteId == "sched-1")
+        #expect(fetched.eligibleRoles.first?.id == "\(account.id.uuidString)|sched-1")
         let time = try #require(fetched.records.first?.timeToActivation)
         #expect(time > 7 && time < 10)
+    }
+
+    @Test func sameRoleUnderTwoAccountsDoesNotCollide() throws {
+        let cli = Account(mode: .azureCLI, upn: "a@x.com", objectId: "o", tenantId: "t")
+        let msal = Account(mode: .msal, upn: "a@x.com", objectId: "o", tenantId: "t")
+        context.insert(cli)
+        context.insert(msal)
+        for account in [cli, msal] {
+            context.insert(EligibleRole(id: "same-schedule", account: account, source: .azureResource, roleDefinitionId: "d",
+                                        roleName: "Reader", scope: "/", scopeName: "Root", scopeType: "managementgroup"))
+        }
+        try context.save()
+        #expect(try context.fetchCount(FetchDescriptor<EligibleRole>()) == 2)
+        #expect(cli.eligibleRoles.count == 1 && msal.eligibleRoles.count == 1)
     }
 
     @Test func deletingAccountCascades() throws {

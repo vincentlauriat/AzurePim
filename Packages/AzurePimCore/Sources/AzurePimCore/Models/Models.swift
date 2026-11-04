@@ -48,8 +48,10 @@ public final class Account {
 
 @Model
 public final class EligibleRole {
-    /// Remote eligibility schedule id.
+    /// Local id: `<account id>|<remote schedule id>` (the same role can appear under a CLI and an MSAL account).
     @Attribute(.unique) public var id: String
+    /// Remote eligibility schedule id (ARM `roleEligibilityScheduleId`, Graph schedule id).
+    public var remoteId: String = ""
     public var account: Account?
     public var sourceRaw: String
     public var roleDefinitionId: String
@@ -69,7 +71,8 @@ public final class EligibleRole {
 
     public init(id: String, account: Account, source: RoleSource, roleDefinitionId: String, roleName: String,
                 scope: String, scopeName: String, scopeType: String, memberType: MemberType = .direct) {
-        self.id = id
+        self.id = "\(account.id.uuidString)|\(id)"
+        self.remoteId = id
         self.account = account
         self.sourceRaw = source.rawValue
         self.roleDefinitionId = roleDefinitionId
@@ -87,6 +90,26 @@ public final class EligibleRole {
 
     public var source: RoleSource { RoleSource(rawValue: sourceRaw) ?? .azureResource }
     public var memberType: MemberType { MemberType(rawValue: memberTypeRaw) ?? .direct }
+
+    public var remote: RemoteEligibility {
+        RemoteEligibility(id: remoteId, source: source, roleDefinitionId: roleDefinitionId, roleName: roleName, scope: scope,
+                          scopeName: scopeName, scopeType: scopeType, memberType: memberType)
+    }
+
+    public var policy: RolePolicy {
+        get {
+            RolePolicy(maxDuration: maxDuration, requiresJustification: requiresJustification, requiresTicket: requiresTicket,
+                       requiresMFA: requiresMFA, requiresApproval: requiresApproval)
+        }
+        set {
+            maxDuration = newValue.maxDuration
+            requiresJustification = newValue.requiresJustification
+            requiresTicket = newValue.requiresTicket
+            requiresMFA = newValue.requiresMFA
+            requiresApproval = newValue.requiresApproval
+            policyFetchedAt = .now
+        }
+    }
 }
 
 @Model
@@ -106,7 +129,7 @@ public final class ActiveAssignment {
 
     public init(id: String, account: Account, source: RoleSource, roleName: String, scope: String, scopeName: String,
                 assignmentType: AssignmentType, startAt: Date, endAt: Date?, eligibleRole: EligibleRole? = nil) {
-        self.id = id
+        self.id = "\(account.id.uuidString)|\(id)"
         self.account = account
         self.eligibleRole = eligibleRole
         self.sourceRaw = source.rawValue
