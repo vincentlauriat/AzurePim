@@ -65,7 +65,44 @@ public enum Validation {
         guard url.lastPathComponent == "az", fileManager.isExecutableFile(atPath: path) else {
             return .invalidFormat("azCLIPath")
         }
+        // Both the link and its resolved target, with every ancestor folder, must be owned by root or the user and not
+        // writable by others (security review L2). The resolved target is what gets executed (`locateCLI`).
+        let target = url.resolvingSymlinksInPath()
+        for start in [url, target] where !isTrustedChain(start, fileManager: fileManager) {
+            return .invalidFormat("azCLIPath")
+        }
         return nil
+    }
+
+    /// The configured `az`, resolved once: the returned path is the exact string that was validated and that runs.
+    public static func trustedAZ(_ path: String, fileManager: FileManager = .default) -> String? {
+        let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        guard azPath(path, fileManager: fileManager) == nil,
+              resolved == URL(fileURLWithPath: resolved).resolvingSymlinksInPath().path,
+              isTrustedChain(URL(fileURLWithPath: resolved), fileManager: fileManager) else { return nil }
+        return resolved
+    }
+
+    /// The item and all its ancestors: readable attributes, owner root or current user, not world-writable, and
+    /// group-writable only for wheel (0) or admin (80) — admins can already act as root; Homebrew's prefix is
+    /// admin-writable. Root-owned sticky folders (/tmp) are tolerated as distant ancestors only, never as the
+    /// executable's own folder. Extended ACLs are not inspected (accepted risk, TRD › Security).
+    static func isTrustedChain(_ url: URL, fileManager: FileManager) -> Bool {
+        var item = url.standardizedFileURL
+        var depth = 0
+        while true {
+            guard let attributes = try? fileManager.attributesOfItem(atPath: item.path),
+                  let mode = attributes[.posixPermissions] as? Int,
+                  let owner = (attributes[.ownerAccountID] as? NSNumber)?.uint32Value,
+                  let group = (attributes[.groupOwnerAccountID] as? NSNumber)?.uint32Value else { return false }
+            guard owner == 0 || owner == getuid() else { return false }
+            if mode & 0o020 != 0 && group != 0 && group != 80 { return false }
+            let stickyRoot = mode & 0o1000 != 0 && owner == 0 && depth >= 2
+            if mode & 0o002 != 0 && !stickyRoot { return false }
+            if item.path == "/" { return true }
+            item = item.deletingLastPathComponent()
+            depth += 1
+        }
     }
 }
 
@@ -89,6 +126,20 @@ public enum ISODuration {
         case (0, let mins): return "PT\(mins)M"
         case (let hrs, 0): return "PT\(hrs)H"
         case (let hrs, let mins): return "PT\(hrs)H\(mins)M"
+        }
+    }
+}
+
+extension Validation.Failure {
+    /// Short English message for inline errors and toasts.
+    public var userMessage: String {
+        switch self {
+        case .empty(let field): field == "ticket" ? "Ticket number required by policy" : "\(field.capitalized) required"
+        case .tooLong(let field, let max): "\(field.capitalized) is limited to \(max) characters"
+        case .outOfRange(let field, let range): "\(field.capitalized) must be between \(range.lowerBound) and \(range.upperBound)"
+        case .invalidFormat(let field): "Invalid \(field)"
+        case .duplicate(let field): "This \(field) is already used"
+        case .exceedsPolicy(let max): "Longer than the policy maximum (\(Int(max / 3600)) h)"
         }
     }
 }

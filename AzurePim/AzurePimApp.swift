@@ -18,11 +18,17 @@ struct AzurePimApp: App {
         }
         let accountService = AccountService(context: container.mainContext)
         _accounts = State(initialValue: accountService)
-        let roleStore = RoleStore(context: container.mainContext, accounts: accountService,
-                                  notifications: NotificationScheduler())
+        let notifications = NotificationScheduler()
+        let roleStore = RoleStore(context: container.mainContext, accounts: accountService, notifications: notifications)
+        notifications.onExtend = { roleId in await roleStore.extend(eligibleRoleId: roleId) }
+        notifications.onOpen = { NSApp.activate(ignoringOtherApps: true) }
         _store = State(initialValue: roleStore)
         // Started at launch, independent of any view (a menu bar label is not guaranteed to run `.task`).
+        DeepLinkHandler.store = roleStore
         Task { @MainActor in roleStore.start() }
+        #if DEBUG
+        SnapshotRunner.run(container: container, accounts: accountService, store: roleStore)
+        #endif
     }
 
     var body: some Scene {
@@ -42,12 +48,13 @@ struct AzurePimApp: App {
         Window("AzurePim", id: WindowID.main) {
             MainWindow()
                 .frame(minWidth: 760, minHeight: 480)
+                .onOpenURL { DeepLinkHandler.handle($0) }
                 .environment(accounts)
                 .environment(store)
                 .modelContainer(container)
         }
         .defaultSize(width: 980, height: 640)
-        .handlesExternalEvents(matching: ["open"])
+        .handlesExternalEvents(matching: ["open", "activate"])
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
@@ -68,6 +75,7 @@ struct AzurePimApp: App {
                 .modelContainer(container)
         }
         .windowResizability(.contentSize)
+        .handlesExternalEvents(matching: [])
 
         Settings {
             SettingsView(updater: updater)

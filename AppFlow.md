@@ -106,7 +106,7 @@
 
 | Action | Trigger | Validation | Loading | Success | Error | Next |
 |---|---|---|---|---|---|---|
-| Extend | Notification action | Policy allows; otherwise re-activate with same parameters | Background request | Follow-up notification "Extended until 18:40" or "Pending approval" | Notification with error, opens panel on click | — |
+| Extend | Notification action | Re-activate with the last duration and justification (deactivate first if Azure says the role is still active); refused if the policy needs approval, a ticket or MFA (PRD open question 11) | Background request | Follow-up notification "Extended until 18:40" or "Pending approval" | Notification with error, opens panel on click | — |
 | Dismiss | Notification action | — | — | — | — | — |
 | Open | Click body | — | — | — | — | Menu Bar Panel |
 
@@ -115,7 +115,7 @@
 - Menu bar panel closes on outside click, stays open while the Activation Sheet is shown.
 - Main window: `NavigationSplitView` sidebar — Roles (⌘1), History (⌘2), Favorites (⌘3). Settings in its own window (⌘,).
 - Closing the main window hides the Dock icon; the app keeps running in the menu bar. Quit only from the panel menu (⌘Q).
-- Deep links: `azurepim://open`, `azurepim://activate?favorite=<name>`, `azurepim://role?id=<eligibilityScheduleId>`.
+- Deep links: `azurepim://open`, `azurepim://activate?favorite=<name>`, `azurepim://role?id=<eligibilityScheduleId>`. Running a favorite from a link always asks for confirmation (PRD open question 12).
 
 ## Empty and blocked states
 

@@ -11,6 +11,7 @@ struct AccountsSettingsView: View {
     @State private var busy = false
     @State private var error: String?
     @State private var pendingRemoval: Account?
+    @State private var confirmingWipe = false
 
     var body: some View {
         Form {
@@ -38,8 +39,24 @@ struct AccountsSettingsView: View {
                 if let error { Text(error).font(.callout).foregroundStyle(.red) }
             }
             PreferencesSection(settings: service.settings)
+            Section("Privacy") {
+                HStack {
+                    Text("Accounts, cached roles, favorites and history stay on this Mac only.")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Delete All Local Data…", role: .destructive) { confirmingWipe = true }
+                }
+            }
         }
         .formStyle(.grouped)
+        .confirmationDialog("Delete all AzurePim data on this Mac?", isPresented: $confirmingWipe) {
+            Button("Delete All", role: .destructive) {
+                do { try service.deleteAllLocalData() } catch { self.error = AccountService.message(for: error) }
+            }
+        } message: {
+            Text("Signs out every account and deletes cached roles, favorites, history and preferences. "
+                 + "Your roles in Azure are not changed.")
+        }
         .confirmationDialog("Remove \(pendingRemoval?.upn ?? "")?", isPresented: .constant(pendingRemoval != nil),
                             presenting: pendingRemoval) { account in
             Button("Remove", role: .destructive) {

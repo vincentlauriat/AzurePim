@@ -10,9 +10,17 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .roles: "key.horizontal"
+        case .roles: "key.horizontal.fill"
         case .history: "clock.arrow.circlepath"
-        case .favorites: "star"
+        case .favorites: "star.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .roles: Theme.accent
+        case .history: Theme.warning
+        case .favorites: Theme.violet
         }
     }
 
@@ -25,22 +33,35 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     }
 }
 
-/// Main window: Roles Window, History Window, Favorites Window (AppFlow). Step 1 shell.
+/// Main window: Roles Window, History Window, Favorites Window (AppFlow).
 struct MainWindow: View {
-    @State private var selection: SidebarItem? = .roles
+    @State private var selection: SidebarItem?
+
+    /// Debug snapshots: shows a section without a sidebar highlight (an off-screen window renders it black).
+    private let snapshot: SidebarItem?
+
+    init(snapshot: SidebarItem? = nil) {
+        self.snapshot = snapshot
+        _selection = State(initialValue: .roles)
+    }
 
     var body: some View {
         NavigationSplitView {
-            List(SidebarItem.allCases, selection: $selection) { item in
-                Label(item.rawValue, systemImage: item.symbol).tag(item)
+            List(SidebarItem.allCases, selection: snapshot == nil ? $selection : .constant(nil)) { item in
+                Label {
+                    Text(item.rawValue)
+                } icon: {
+                    Image(systemName: item.symbol).foregroundStyle(item.tint)
+                }
+                .tag(item)
             }
             .navigationSplitViewColumnWidth(180)
         } detail: {
-            ContentUnavailableView(
-                selection?.rawValue ?? "AzurePim",
-                systemImage: selection?.symbol ?? "key.fill",
-                description: Text("Add an account to get started.")
-            )
+            switch snapshot ?? selection ?? .roles {
+            case .roles: RolesView()
+            case .history: HistoryView()
+            case .favorites: FavoritesView()
+            }
         }
         .background(shortcuts)
         .onAppear { DockPolicy.mainWindowDidOpen() }

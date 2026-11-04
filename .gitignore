@@ -16,3 +16,6 @@ AzurePim.xcodeproj/
 Packages/AzurePimCore/.build/
 .swiftpm/
 Config/AzurePim.local.xcconfig
+
+# Contains a named admin and tenant id: kept local (security review L8)
+docs/admin-consent/email-voltalia-admin.md

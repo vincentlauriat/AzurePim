@@ -27,12 +27,63 @@ func fakeJWT(_ claims: [String: Any]) -> String {
 }
 
 struct AzureCLITokenProviderTests {
-    /// `/bin/echo` stands in for `az`: it exists and is executable, the runner is faked anyway.
-    let fakeAZ = "/bin/echo"
+    /// A stub executable named `az` (the runner is faked anyway): a real path must be named `az`, and not depend
+    /// on the Azure CLI being installed on the machine running the tests (CI).
+    static let sharedAZ: String = {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "azurepim-stub-\(UUID().uuidString)")
+        let binary = dir.appending(path: "az")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? Data("#!/bin/sh\n".utf8).write(to: binary)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
+        return binary.path
+    }()
+    let fakeAZ = AzureCLITokenProviderTests.sharedAZ
 
-    @Test func locatesConfiguredPathFirst() {
-        let provider = AzureCLITokenProvider(configuredPath: fakeAZ, runner: FakeRunner([]))
-        #expect(provider.locateCLI()?.path == fakeAZ)
+    /// Executable named `az` in a fresh folder with the given permissions.
+    private func makeAZ(folderMode: Int) throws -> String {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "azurepim-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let binary = dir.appending(path: "az")
+        try Data("#!/bin/sh\n".utf8).write(to: binary)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
+        try FileManager.default.setAttributes([.posixPermissions: folderMode], ofItemAtPath: dir.path)
+        return binary.path
+    }
+
+    @Test func locatesConfiguredPathFirst() throws {
+        let path = try makeAZ(folderMode: 0o755)
+        let provider = AzureCLITokenProvider(configuredPath: path, runner: FakeRunner([]))
+        #expect(provider.locateCLI()?.path == URL(fileURLWithPath: path).resolvingSymlinksInPath().path)
+    }
+
+    /// A file directly in a root-owned sticky folder (/tmp-like) is refused; a group-writable non-admin folder too.
+    @Test func trustChainRules() throws {
+        let fileManager = FileManager.default
+        #expect(!Validation.isTrustedChain(URL(fileURLWithPath: "/private/tmp/az"), fileManager: fileManager)
+            || !fileManager.fileExists(atPath: "/private/tmp/az"))
+        #expect(Validation.isTrustedChain(URL(fileURLWithPath: "/bin/sh"), fileManager: fileManager))
+        let path = try makeAZ(folderMode: 0o775)
+        let gid = (try fileManager.attributesOfItem(atPath: (path as NSString).deletingLastPathComponent)[.groupOwnerAccountID]
+            as? NSNumber)?.uint32Value ?? 0
+        #expect(Validation.isTrustedChain(URL(fileURLWithPath: path), fileManager: fileManager) == (gid == 0 || gid == 80))
+    }
+
+    /// A trusted link pointing into a world-writable folder is refused: the target is checked, not only the link.
+    @Test func refusesLinkToUntrustedTarget() throws {
+        let target = try makeAZ(folderMode: 0o777)
+        let linkDir = FileManager.default.temporaryDirectory.appending(path: "azurepim-link-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: linkDir, withIntermediateDirectories: true)
+        let link = linkDir.appending(path: "az")
+        try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: target)
+        #expect(Validation.azPath(link.path) == .invalidFormat("azCLIPath"))
+    }
+
+    /// A configured `az` in a world-writable folder is ignored (security review L2).
+    @Test func ignoresConfiguredPathInWorldWritableFolder() throws {
+        let path = try makeAZ(folderMode: 0o777)
+        #expect(Validation.azPath(path) == .invalidFormat("azCLIPath"))
+        let provider = AzureCLITokenProvider(configuredPath: path, runner: FakeRunner([]))
+        #expect(provider.locateCLI()?.path != path)
     }
 
     @Test func missingCLIThrowsCliNotFound() async {
@@ -109,6 +160,16 @@ struct AzureCLITokenProviderTests {
             try await ProcessRunner().run(URL(fileURLWithPath: "/bin/sleep"), arguments: ["5"], environment: [:],
                                           timeout: .milliseconds(300))
         }
+    }
+
+    /// A child that ignores SIGTERM and a grandchild holding stdout must not defeat the timeout (security review L3).
+    @Test func timeoutFiresWhenChildIgnoresTerminate() async {
+        let start = Date.now
+        await #expect(throws: TokenError.timedOut) {
+            try await ProcessRunner().run(URL(fileURLWithPath: "/bin/sh"), arguments: ["-c", "trap '' TERM; sleep 8"],
+                                          environment: [:], timeout: .milliseconds(300))
+        }
+        #expect(Date.now.timeIntervalSince(start) < 3)
     }
 
     /// Live check against the real Azure CLI session. Opt-in: AZUREPIM_LIVE=1 swift test

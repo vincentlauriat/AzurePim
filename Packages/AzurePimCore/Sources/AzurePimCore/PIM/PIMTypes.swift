@@ -130,7 +130,8 @@ public struct RequestOutcome: Sendable, Equatable {
     /// Maps ARM / Graph request status strings.
     public static func status(from raw: String?) -> RequestStatus {
         switch raw?.lowercased() {
-        case "provisioned", "granted", "scheduled", "provisioningstarted", "pendingprovisioning", "accepted":
+        case "provisioned", "granted", "scheduled", "provisioningstarted", "pendingprovisioning", "accepted",
+             "adminapproved", "schedulecreated":
             return .provisioned
         case "pendingapproval", "pendingapprovalprovisioning", "pendingadmindecision", "pendingevaluation":
             return .pendingApproval
@@ -165,6 +166,12 @@ public protocol PIMSource: Sendable {
     func policy(for eligibility: RemoteEligibility) async throws -> RolePolicy
     func activate(_ eligibility: RemoteEligibility, principalId: String, input: ActivationInput) async throws -> RequestOutcome
     func deactivate(_ eligibility: RemoteEligibility, principalId: String) async throws -> RequestOutcome
+    /// Requests sent by the signed-in user that wait for an approver (History Window).
+    func pendingRequests() async throws -> [RemoteRequest]
+    /// Current status of a request sent earlier (`RequestOutcome.requestId`).
+    func status(ofRequest id: String) async throws -> RequestStatus
+    /// Cancels a pending request.
+    func cancel(request id: String) async throws
 }
 
 enum PIMDates {

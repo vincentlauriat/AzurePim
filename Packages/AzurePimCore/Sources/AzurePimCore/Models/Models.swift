@@ -218,6 +218,7 @@ public final class ActivationRecord {
         set { statusRaw = newValue.rawValue }
     }
     public var action: ActivationAction { ActivationAction(rawValue: actionRaw) ?? .activate }
+    public var source: RoleSource { RoleSource(rawValue: sourceRaw) ?? .azureResource }
     /// Activation timing (PRD success metric): panel opened → provisioned.
     public var timeToActivation: TimeInterval? {
         guard let start = panelOpenedAt, let end = completedAt else { return nil }

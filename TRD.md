@@ -103,6 +103,19 @@ flowchart LR
   or found at a known path, with an explicit argument array (no shell).
 - History retention: 90 days by default, configurable 7–365; "Delete all local data" in Settings.
 - Justification texts may contain ticket references — stored locally only, deleted with history.
+- The SwiftData store is not encrypted (accepted for v1, security review 2026-11-04): it holds UPNs, tenant / object ids,
+  the eligible-role inventory with policy flags, justifications and ticket numbers — no tokens. Its folder is
+  owner-only (0700). A sandboxed Mac App Store build would move it into the app container.
+- `az` runs with an allowlisted environment (HOME, USER, LANG, PATH, AZURE_CONFIG_DIR, AZURE_CORE_*); a configured path
+  must be named `az`; the link, its resolved target and every ancestor must be owned by root or the user, not
+  world-writable, and group-writable only for wheel/admin (Homebrew's prefix is admin-writable). The resolved path is
+  validated once and is what runs. Accepted residual risks: extended ACLs are not inspected, and a file swap between
+  check and launch is possible only for someone who can already write to those trusted folders.
+  Timeout: SIGTERM, then SIGKILL after 1 s.
+- Tokens are sent only to the host of the request (paged `nextLink` to another host is refused); a CLI token whose
+  object id differs from the account's is refused (another `az login` identity).
+- Dependencies pinned to exact versions (MSAL 2.17.1, Sparkle 2.10.1); CI actions pinned by commit SHA.
+- No logging is implemented yet; History is the local audit trail.
 
 ## Performance and reliability targets
 

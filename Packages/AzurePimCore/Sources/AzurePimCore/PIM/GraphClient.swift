@@ -164,7 +164,8 @@ enum GraphURL {
         let items = try await client.list(make(
             "/policies/roleManagementPolicyAssignments",
             expand: "policy($expand=rules)",
-            filter: "scopeId eq '\(scopeId)' and scopeType eq '\(scopeType)' and roleDefinitionId eq '\(roleDefinitionId)'"))
+            filter: "scopeId eq \(OData.literal(scopeId)) and scopeType eq \(OData.literal(scopeType))"
+                + " and roleDefinitionId eq \(OData.literal(roleDefinitionId))"))
         let rules = ((items.first?["policy"] as? [String: Any])?["rules"] as? [[String: Any]]) ?? []
         return RolePolicy(rules: rules)
     }

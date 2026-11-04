@@ -6,23 +6,42 @@ import SwiftData
 @MainActor
 @Observable
 final class RoleStore {
-    private let context: ModelContext
-    private let accounts: AccountService
-    private let notifications: NotificationScheduler
+    let context: ModelContext
+    let accounts: AccountService
+    let notifications: NotificationScheduler
     private var autoRefresh: Task<Void, Never>?
 
     private(set) var isRefreshing = false
     private(set) var lastRefresh: Date?
     /// Errors of the last refresh, per account and source, as user messages.
-    private(set) var refreshErrors: [UUID: [RoleSource: String]] = [:]
+    private(set) var refreshErrors: [UUID: [RoleSource: ErrorKind]] = [:]
+    /// Last refresh that reached Microsoft (Offline state: "showing data from …").
+    private(set) var lastOnline: Date?
+    /// The network is unreachable: actions are disabled, cached data stays visible.
+    var isOffline: Bool { refreshErrors.values.contains { $0.values.contains(.offline) } }
     /// Rows with a request in flight, and the last error per row (local EligibleRole / ActiveAssignment id).
     private(set) var busy: Set<String> = []
-    private(set) var rowErrors: [String: String] = [:]
+    var rowErrors: [String: String] = [:]
     /// When the panel was last opened (Activation timing).
     var panelOpenedAt: Date?
     /// Clock for countdowns: ticks every 30 s, every second in the last 5 minutes before an expiry (TRD › Performance).
     private(set) var now = Date.now
     private var clock: Task<Void, Never>?
+    /// Requests waiting for an approver, per account (History Window), and the last error fetching them.
+    var pending: [UUID: [RemoteRequest]] = [:]
+    var pendingErrors: [UUID: String] = [:]
+    /// Favorites being run, and the last result toast per favorite.
+    var runningFavorites: Set<UUID> = []
+    var favoriteToast: (favoriteId: UUID, text: String)?
+    /// Last activation error per role, with whether it means "already active" (extend fallback).
+    var lastActivationError: [String: (text: String, alreadyActive: Bool)] = [:]
+    /// True while the History window is shown: pending requests are then listed on every refresh.
+    var historyVisible = false
+    /// Roles with an extension in flight (a second tap on another notification is refused).
+    var extending: Set<String> = []
+    private var refreshRequested = false
+    /// Account filter of the panel (nil = all accounts, T4.4).
+    var accountFilter: UUID?
 
     init(context: ModelContext, accounts: AccountService, notifications: NotificationScheduler) {
         self.context = context
@@ -64,15 +83,24 @@ final class RoleStore {
         await refresh()
     }
 
+    /// A refresh asked while one runs is not dropped: it runs once more right after (an action's result must show).
     func refresh() async {
-        guard !isRefreshing else { return }
+        guard !isRefreshing else {
+            refreshRequested = true
+            return
+        }
         isRefreshing = true
         defer { isRefreshing = false }
-        let list = (try? context.fetch(FetchDescriptor<Account>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
-        for account in list {
-            await refresh(account)
-        }
+        repeat {
+            refreshRequested = false
+            let list = (try? context.fetch(FetchDescriptor<Account>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
+            for account in list {
+                await refresh(account)
+            }
+        } while refreshRequested
+        if !isOffline { lastOnline = .now }
         lastRefresh = .now
+        purgeHistory()
         try? context.save()
         await notifications.reschedule(activations: activeActivations(), leadMinutes: accounts.settings.notificationLeadMinutes)
     }
@@ -82,22 +110,23 @@ final class RoleStore {
         do {
             service = PIMService(sources: try sources(for: account))
         } catch {
-            refreshErrors[account.id] = [.azureResource: AccountService.message(for: error)]
+            refreshErrors[account.id] = [.azureResource: ErrorKind.classify(error)]
             return
         }
         let snapshot = await service.refresh()
-        var errors: [RoleSource: String] = [:]
+        var errors: [RoleSource: ErrorKind] = [:]
         for (source, error) in snapshot.errors {
             if case TokenError.consentRequired = error {
                 account.directoryAccess = .consentRequired
             } else {
-                errors[source] = Self.message(for: error)
+                errors[source] = ErrorKind.classify(error)
             }
         }
         refreshErrors[account.id] = errors
         apply(snapshot, to: account, failedSources: Set(snapshot.errors.keys))
         account.lastRefreshAt = snapshot.fetchedAt
         await refreshPolicies(of: account, service: service)
+        await refreshPending(of: account, service: service, failedSources: Set(snapshot.errors.keys))
     }
 
     /// Replaces the cache of one account. Sources that failed keep their previous rows (offline / throttled).
@@ -140,27 +169,37 @@ final class RoleStore {
         }
     }
 
-    private func sources(for account: Account) throws -> [any PIMSource] {
+    func sources(for account: Account) throws -> [any PIMSource] {
         let provider = try accounts.provider(for: account)
-        let tenantId = account.tenantId
+        let tenantId = account.tenantId, objectId = account.objectId.lowercased(), upn = account.upn
         return PIMService.sources(token: { resource, claims in
-            try await provider.token(for: resource, tenantId: tenantId, claims: claims)
+            let token = try await provider.token(for: resource, tenantId: tenantId, claims: claims)
+            // `az` follows whoever last ran `az login`: never act for one account with another identity's token.
+            if let oid = JWTClaims(token: token.value)?.objectId, oid.lowercased() != objectId {
+                throw TokenError.cliNotSignedIn(command: "az login  # as \(upn)")
+            }
+            return token
         }, directory: account.directoryAccess == .enabled)
     }
 
     // MARK: - Actions
 
     /// Sends an activation request; returns the outcome status, or nil on failure (error stored per row).
+    /// `fromPanel` false for deep links and notification actions: no `panelOpenedAt`, so the record stays out of
+    /// the time-to-activation median. `refreshAfter` false when the caller refreshes once after a batch.
     @discardableResult
-    func activate(_ role: EligibleRole, input: ActivationInput, viaFavorite: String? = nil) async -> RequestStatus? {
+    func activate(_ role: EligibleRole, input: ActivationInput, viaFavorite: String? = nil, fromPanel: Bool = true,
+                  action: ActivationAction = .activate, refreshAfter: Bool = true) async -> RequestStatus? {
         guard let account = role.account else { return nil }
         busy.insert(role.id)
         rowErrors[role.id] = nil
+        lastActivationError[role.id] = nil
         defer { busy.remove(role.id) }
         let record = ActivationRecord(account: account, eligibleRoleId: role.id, roleName: role.roleName,
-                                      scopeName: role.scopeName, source: role.source, action: .activate,
+                                      scopeName: role.scopeName, source: role.source, action: action,
                                       requestedDuration: input.duration, justification: input.justification,
-                                      ticketNumber: input.ticketNumber, panelOpenedAt: panelOpenedAt, viaFavorite: viaFavorite)
+                                      ticketNumber: input.ticketNumber, panelOpenedAt: fromPanel ? recentPanelOpen : nil,
+                                      viaFavorite: viaFavorite)
         context.insert(record)
         do {
             guard let source = try PIMService(sources: sources(for: account)).source(for: role.source) else {
@@ -172,21 +211,23 @@ final class RoleStore {
             if outcome.status == .provisioned { record.completedAt = .now }
             role.lastJustification = input.justification
             try? context.save()
-            await refresh()
+            if refreshAfter { await refresh() }
             return outcome.status
         } catch {
             record.status = .failed
             record.errorMessage = Self.message(for: error)
             rowErrors[role.id] = record.errorMessage
+            lastActivationError[role.id] = (Self.message(for: error), ExtendPlan.isAlreadyActive(error))
             try? context.save()
             return nil
         }
     }
 
-    func deactivate(_ assignment: ActiveAssignment) async {
+    @discardableResult
+    func deactivate(_ assignment: ActiveAssignment, refreshAfter: Bool = true) async -> Bool {
         guard let account = assignment.account, let role = assignment.eligibleRole else {
             rowErrors[assignment.id] = "This assignment is permanent and cannot be deactivated."
-            return
+            return false
         }
         busy.insert(assignment.id)
         rowErrors[assignment.id] = nil
@@ -203,12 +244,14 @@ final class RoleStore {
             record.status = outcome.status == .failed ? .failed : .provisioned
             record.completedAt = .now
             try? context.save()
-            await refresh()
+            if refreshAfter { await refresh() }
+            return record.status == .provisioned
         } catch {
             record.status = .failed
             record.errorMessage = Self.message(for: error)
             rowErrors[assignment.id] = record.errorMessage
             try? context.save()
+            return false
         }
     }
 
@@ -221,7 +264,23 @@ final class RoleStore {
         try? context.save()
     }
 
+    /// Reads the policy from Azure / Graph now, ignoring the 24 h cache. False if it could not be read.
+    func refreshPolicy(for role: EligibleRole) async -> Bool {
+        guard let account = role.account,
+              let source = try? PIMService(sources: sources(for: account)).source(for: role.source),
+              let policy = try? await source.policy(for: role.remote) else { return false }
+        role.policy = policy
+        try? context.save()
+        return true
+    }
+
     // MARK: - Queries
+
+    /// Panel open time if recent: a stale value (panel `onAppear` not called again) would inflate the median.
+    private var recentPanelOpen: Date? {
+        guard let opened = panelOpenedAt, Date.now.timeIntervalSince(opened) < 600 else { return nil }
+        return opened
+    }
 
     func activeActivations() -> [ActiveAssignment] {
         let all = (try? context.fetch(FetchDescriptor<ActiveAssignment>(sortBy: [SortDescriptor(\.endAt)]))) ?? []
@@ -229,9 +288,6 @@ final class RoleStore {
     }
 
     static func message(for error: Error) -> String {
-        if let pim = error as? PIMError { return pim.userMessage }
-        if error is TokenError { return AccountService.message(for: error) }
-        if let url = error as? URLError, url.code == .notConnectedToInternet { return "Offline." }
-        return error.localizedDescription
+        ErrorKind.classify(error).message
     }
 }

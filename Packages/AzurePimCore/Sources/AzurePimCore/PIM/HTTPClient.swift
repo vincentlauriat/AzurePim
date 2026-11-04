@@ -71,7 +71,8 @@ public struct AuthorizedClient: Sendable {
             }
             if status == 429 || status >= 500, attempt < maxRetries {
                 let retryAfter = response.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
-                try await sleep(.seconds(retryAfter ?? pow(2, Double(attempt))))
+                // Capped: a huge Retry-After must not hold the refresh (and queued actions) for hours.
+                try await sleep(.seconds(min(retryAfter ?? pow(2, Double(attempt)), 30)))
                 attempt += 1
                 continue
             }
@@ -87,6 +88,10 @@ public struct AuthorizedClient: Sendable {
             let object = try await json("GET", page)
             items += (object["value"] as? [[String: Any]]) ?? []
             next = ((object["nextLink"] ?? object["@odata.nextLink"]) as? String).flatMap(URL.init(string:))
+            // The bearer token only goes back to the host it was meant for.
+            if let link = next, link.scheme != "https" || link.host() != url.host() {
+                throw PIMError.decoding("unexpected nextLink host")
+            }
         }
         return items
     }
