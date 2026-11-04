@@ -65,9 +65,16 @@ final class MSALTokenProvider: TokenProvider {
                                   prompt: .default)
     }
 
-    func signOut() {
-        guard let id = homeAccountId, let account = try? application.account(forIdentifier: id) else { return }
-        try? application.remove(account)
+    /// Removes the account from the MSAL token cache. Throws if the cache cannot be purged, so the caller
+    /// never forgets an account whose tokens are still in the Keychain.
+    func signOut() throws {
+        guard let id = homeAccountId else { return }
+        do {
+            let account = try application.account(forIdentifier: id)
+            try application.remove(account)
+        } catch {
+            throw TokenError.failed("Could not remove the Microsoft session from the Keychain: \(error.localizedDescription)")
+        }
         homeAccountId = nil
     }
 

@@ -13,6 +13,8 @@ public final class Account {
     public var tenantId: String
     public var tenantName: String?
     public var msalHomeAccountId: String?
+    /// Client id used at sign-in: removal must purge the token cache of that same app (MSAL only).
+    public var msalClientId: String?
     public var directoryAccessRaw: String
     public var sortOrder: Int
     public var lastRefreshAt: Date?
@@ -22,7 +24,7 @@ public final class Account {
     @Relationship(deleteRule: .cascade, inverse: \ActivationRecord.account) public var records: [ActivationRecord] = []
 
     public init(mode: SignInMode, upn: String, objectId: String, tenantId: String, tenantName: String? = nil,
-                msalHomeAccountId: String? = nil, sortOrder: Int = 0) {
+                msalHomeAccountId: String? = nil, msalClientId: String? = nil, sortOrder: Int = 0) {
         self.id = UUID()
         self.modeRaw = mode.rawValue
         self.upn = upn
@@ -30,6 +32,7 @@ public final class Account {
         self.tenantId = tenantId
         self.tenantName = tenantName
         self.msalHomeAccountId = msalHomeAccountId
+        self.msalClientId = msalClientId
         self.directoryAccessRaw = (mode == .azureCLI ? DirectoryAccess.notApplicable : .notRequested).rawValue
         self.sortOrder = sortOrder
     }

@@ -52,7 +52,7 @@ final class AccountService {
     @discardableResult
     func addCLIAccount(tenantId: String? = nil) async throws -> Account {
         let identity = try await cliProvider.identity(tenantId: tenantId)
-        return try upsert(identity: identity, mode: .azureCLI, homeAccountId: nil)
+        return try upsert(identity: identity, mode: .azureCLI, homeAccountId: nil, clientId: nil)
     }
 
     // MARK: - MSAL
@@ -62,7 +62,8 @@ final class AccountService {
         guard let clientId = msalClientId else { throw TokenError.notConfigured }
         let provider = try MSALTokenProvider(clientId: clientId)
         let identity = try await provider.signIn()
-        let account = try upsert(identity: identity, mode: .msal, homeAccountId: provider.homeAccountId)
+        let account = try upsert(identity: identity, mode: .msal, homeAccountId: provider.homeAccountId,
+                                 clientId: clientId)
         msalProviders[account.id] = provider
         return account
     }
@@ -88,8 +89,10 @@ final class AccountService {
         }
     }
 
+    /// Removes an account. For MSAL the token cache is purged first; if that fails the account is kept
+    /// and the error is shown, so no orphaned credentials stay in the Keychain.
     func remove(_ account: Account) throws {
-        if account.mode == .msal { (try? msalProvider(for: account))?.signOut() }
+        if account.mode == .msal { try msalProvider(for: account).signOut() }
         msalProviders[account.id] = nil
         context.delete(account)
         try context.save()
@@ -97,21 +100,24 @@ final class AccountService {
 
     private func msalProvider(for account: Account) throws -> MSALTokenProvider {
         if let existing = msalProviders[account.id] { return existing }
-        guard let clientId = msalClientId else { throw TokenError.notConfigured }
+        // Use the client the account signed in with; fall back to the current one for older rows.
+        guard let clientId = account.msalClientId ?? msalClientId else { throw TokenError.notConfigured }
         let provider = try MSALTokenProvider(clientId: clientId, homeAccountId: account.msalHomeAccountId)
         msalProviders[account.id] = provider
         return provider
     }
 
     /// Same tenant + object id + mode = same account (BackendSchema unique index).
-    private func upsert(identity: SignedInIdentity, mode: SignInMode, homeAccountId: String?) throws -> Account {
+    private func upsert(identity: SignedInIdentity, mode: SignInMode, homeAccountId: String?,
+                        clientId: String?) throws -> Account {
         let candidate = Account(mode: mode, upn: identity.upn, objectId: identity.objectId, tenantId: identity.tenantId,
-                                tenantName: identity.tenantName, msalHomeAccountId: homeAccountId)
+                                tenantName: identity.tenantName, msalHomeAccountId: homeAccountId, msalClientId: clientId)
         let existing = try context.fetch(FetchDescriptor<Account>())
         if let match = existing.first(where: { $0.identityKey == candidate.identityKey }) {
             match.upn = identity.upn
             match.tenantName = identity.tenantName ?? match.tenantName
             match.msalHomeAccountId = homeAccountId ?? match.msalHomeAccountId
+            match.msalClientId = clientId ?? match.msalClientId
             try context.save()
             return match
         }
