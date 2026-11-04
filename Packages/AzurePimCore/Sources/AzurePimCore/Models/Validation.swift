@@ -65,13 +65,29 @@ public enum Validation {
         guard url.lastPathComponent == "az", fileManager.isExecutableFile(atPath: path) else {
             return .invalidFormat("azCLIPath")
         }
-        // Refuse a target, or a folder holding it, that any user can write (security review L2).
+        // Both the link and its resolved target, with every ancestor folder, must be owned by root or the user and not
+        // writable by others (security review L2). The resolved target is what gets executed (`locateCLI`).
         let target = url.resolvingSymlinksInPath()
-        for item in [target, target.deletingLastPathComponent()] {
-            let mode = (try? fileManager.attributesOfItem(atPath: item.path)[.posixPermissions] as? Int) ?? 0
-            if mode & 0o002 != 0 { return .invalidFormat("azCLIPath") }
+        for start in [url, target] where !isTrustedChain(start, fileManager: fileManager) {
+            return .invalidFormat("azCLIPath")
         }
         return nil
+    }
+
+    /// The item and all its ancestors: readable attributes, owner root or current user, not world-writable
+    /// (except root-owned sticky folders such as /tmp, where others cannot replace the user's file).
+    static func isTrustedChain(_ url: URL, fileManager: FileManager) -> Bool {
+        var item = url.standardizedFileURL
+        while true {
+            guard let attributes = try? fileManager.attributesOfItem(atPath: item.path),
+                  let mode = attributes[.posixPermissions] as? Int,
+                  let owner = (attributes[.ownerAccountID] as? NSNumber)?.uint32Value else { return false }
+            guard owner == 0 || owner == getuid() else { return false }
+            let stickyRoot = mode & 0o1000 != 0 && owner == 0
+            if mode & 0o002 != 0 && !stickyRoot { return false }
+            if item.path == "/" { return true }
+            item = item.deletingLastPathComponent()
+        }
     }
 }
 

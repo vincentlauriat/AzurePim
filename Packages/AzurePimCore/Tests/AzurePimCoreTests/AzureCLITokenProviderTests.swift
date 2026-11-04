@@ -53,7 +53,17 @@ struct AzureCLITokenProviderTests {
     @Test func locatesConfiguredPathFirst() throws {
         let path = try makeAZ(folderMode: 0o755)
         let provider = AzureCLITokenProvider(configuredPath: path, runner: FakeRunner([]))
-        #expect(provider.locateCLI()?.path == path)
+        #expect(provider.locateCLI()?.path == URL(fileURLWithPath: path).resolvingSymlinksInPath().path)
+    }
+
+    /// A trusted link pointing into a world-writable folder is refused: the target is checked, not only the link.
+    @Test func refusesLinkToUntrustedTarget() throws {
+        let target = try makeAZ(folderMode: 0o777)
+        let linkDir = FileManager.default.temporaryDirectory.appending(path: "azurepim-link-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: linkDir, withIntermediateDirectories: true)
+        let link = linkDir.appending(path: "az")
+        try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: target)
+        #expect(Validation.azPath(link.path) == .invalidFormat("azCLIPath"))
     }
 
     /// A configured `az` in a world-writable folder is ignored (security review L2).

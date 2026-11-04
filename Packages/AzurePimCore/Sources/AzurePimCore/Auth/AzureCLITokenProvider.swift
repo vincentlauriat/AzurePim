@@ -23,7 +23,10 @@ public actor AzureCLITokenProvider: TokenProvider {
     /// Path of the `az` executable, or nil when not installed.
     public nonisolated func locateCLI() -> URL? {
         // The configured path lives in a user-writable store: validated again at each use (security review L2).
-        let configured = configuredPath.flatMap { Validation.azPath($0, fileManager: fileManager) == nil ? $0 : nil }
+        // Executes the resolved target that was validated, not a link that could be swapped afterwards.
+        let configured = configuredPath.flatMap {
+            Validation.azPath($0, fileManager: fileManager) == nil ? URL(fileURLWithPath: $0).resolvingSymlinksInPath().path : nil
+        }
         let candidates = (configured.map { [$0] } ?? []) + Self.knownPaths
         return candidates.first { fileManager.isExecutableFile(atPath: $0) }.map(URL.init(fileURLWithPath:))
     }
