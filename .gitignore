@@ -11,8 +11,8 @@ build/
 DerivedData/
 *.xcuserstate
 xcuserdata/
-Config.local.xcconfig
 .DS_Store
 AzurePim.xcodeproj/
 Packages/AzurePimCore/.build/
 .swiftpm/
+Config/AzurePim.local.xcconfig

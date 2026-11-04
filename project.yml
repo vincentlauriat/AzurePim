@@ -36,6 +36,9 @@ targets:
         excludes:
           - "**/*.entitlements"
           - "Info.plist"
+    configFiles:
+      Debug: Config/AzurePim.xcconfig
+      Release: Config/AzurePim.xcconfig
     dependencies:
       - package: AzurePimCore
       - package: MSAL
@@ -70,6 +73,8 @@ targets:
         LSApplicationCategoryType: public.app-category.developer-tools
         # Menu bar agent: no Dock icon until the main window opens.
         LSUIElement: true
+        # MSAL client id (Config/AzurePim.xcconfig); empty = Microsoft sign-in disabled.
+        AzurePimClientID: "$(AZUREPIM_CLIENT_ID)"
         NSHumanReadableCopyright: "© 2026 Vincent Lauriat. MIT License."
         CFBundleURLTypes:
           - CFBundleURLName: fr.vincentlauriat.azurepim

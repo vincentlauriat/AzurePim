@@ -1,0 +1,8 @@
+// Build configuration shared by Debug and Release.
+//
+// AZUREPIM_CLIENT_ID: client id of the AzurePim multi-tenant app registration (ImplementationPlan T1.5).
+// Leave empty in git; set it in Config/AzurePim.local.xcconfig (git-ignored) or at runtime in
+// Settings › Accounts › Custom client ID. Empty = "Sign in with Microsoft" is disabled.
+AZUREPIM_CLIENT_ID =
+
+#include? "AzurePim.local.xcconfig"
