@@ -56,15 +56,22 @@ struct MenuBarPanel: View {
     @Query(sort: \Favorite.sortOrder) private var favorites: [Favorite]
     @Query(filter: #Predicate<ActivationRecord> { $0.statusRaw == "pendingApproval" }) private var pendingRecords: [ActivationRecord]
     @State private var activating: EligibleRole?
+    @AppStorage("panel.showPermanent") private var showPermanent = true
 
     /// Accounts shown, after the header account filter (T4.4).
     private var shownAccounts: [Account] {
         guard let filter = store.accountFilter, accountList.contains(where: { $0.id == filter }) else { return accountList }
         return accountList.filter { $0.id == filter }
     }
-    private var activations: [ActiveAssignment] {
+    private var activations: [ActiveAssignment] { shownAssignments(.activated) }
+    /// Permanent assignments (not PIM): read-only, listed so the panel shows every role the user holds.
+    private var permanents: [ActiveAssignment] {
+        shownAssignments(.assigned).sorted { ($0.roleName, $0.scopeName) < ($1.roleName, $1.scopeName) }
+    }
+
+    private func shownAssignments(_ type: AssignmentType) -> [ActiveAssignment] {
         let shown = Set(shownAccounts.map(\.id))
-        return assignments.filter { $0.assignmentType == .activated && $0.account.map { shown.contains($0.id) } == true }
+        return assignments.filter { $0.assignmentType == type && $0.account.map { shown.contains($0.id) } == true }
     }
 
     var body: some View {
@@ -232,11 +239,34 @@ struct MenuBarPanel: View {
 
     private var activeSection: some View {
         PanelSection(title: "Active") {
-            if activations.isEmpty {
+            if activations.isEmpty && permanents.isEmpty {
                 Text("No active role").font(.callout).foregroundStyle(.secondary)
+            } else if activations.isEmpty {
+                Text("No PIM activation").font(.callout).foregroundStyle(.secondary)
             }
             ForEach(activations) { assignment in
                 ActiveRow(assignment: assignment)
+            }
+            if !permanents.isEmpty {
+                Button {
+                    showPermanent.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: showPermanent ? "chevron.down" : "chevron.right").imageScale(.small)
+                        Text("Permanent (\(permanents.count))")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+                .accessibilityLabel(showPermanent ? "Hide permanent roles" : "Show permanent roles")
+                if showPermanent {
+                    ForEach(permanents) { assignment in
+                        PermanentRow(assignment: assignment, showAccount: shownAccounts.count > 1)
+                    }
+                }
             }
         }
     }

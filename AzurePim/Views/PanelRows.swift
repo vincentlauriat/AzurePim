@@ -148,3 +148,26 @@ struct ActiveRow: View {
         }
     }
 }
+
+/// A permanent (non-PIM) role assignment: read-only, no countdown, no action.
+struct PermanentRow: View {
+    let assignment: ActiveAssignment
+    let showAccount: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: SourceIcon.name(assignment.source)).frame(width: 18).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(assignment.roleName).lineLimit(1)
+                Text(showAccount ? "\(assignment.scopeName) · \(assignment.account?.upn ?? "")" : assignment.scopeName)
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }
+            Spacer()
+            Image(systemName: "lock").imageScale(.small).foregroundStyle(.tertiary)
+                .help("Permanent assignment, managed by your administrator")
+        }
+        .frame(minHeight: 28)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(assignment.roleName), \(assignment.scopeName), permanent")
+    }
+}
