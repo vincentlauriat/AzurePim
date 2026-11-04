@@ -14,7 +14,11 @@ final class RoleStore {
     private(set) var isRefreshing = false
     private(set) var lastRefresh: Date?
     /// Errors of the last refresh, per account and source, as user messages.
-    private(set) var refreshErrors: [UUID: [RoleSource: String]] = [:]
+    private(set) var refreshErrors: [UUID: [RoleSource: ErrorKind]] = [:]
+    /// Last refresh that reached Microsoft (Offline state: "showing data from …").
+    private(set) var lastOnline: Date?
+    /// The network is unreachable: actions are disabled, cached data stays visible.
+    var isOffline: Bool { refreshErrors.values.contains { $0.values.contains(.offline) } }
     /// Rows with a request in flight, and the last error per row (local EligibleRole / ActiveAssignment id).
     private(set) var busy: Set<String> = []
     var rowErrors: [String: String] = [:]
@@ -94,6 +98,7 @@ final class RoleStore {
                 await refresh(account)
             }
         } while refreshRequested
+        if !isOffline { lastOnline = .now }
         lastRefresh = .now
         purgeHistory()
         try? context.save()
@@ -105,16 +110,16 @@ final class RoleStore {
         do {
             service = PIMService(sources: try sources(for: account))
         } catch {
-            refreshErrors[account.id] = [.azureResource: AccountService.message(for: error)]
+            refreshErrors[account.id] = [.azureResource: ErrorKind.classify(error)]
             return
         }
         let snapshot = await service.refresh()
-        var errors: [RoleSource: String] = [:]
+        var errors: [RoleSource: ErrorKind] = [:]
         for (source, error) in snapshot.errors {
             if case TokenError.consentRequired = error {
                 account.directoryAccess = .consentRequired
             } else {
-                errors[source] = Self.message(for: error)
+                errors[source] = ErrorKind.classify(error)
             }
         }
         refreshErrors[account.id] = errors
@@ -278,9 +283,6 @@ final class RoleStore {
     }
 
     static func message(for error: Error) -> String {
-        if let pim = error as? PIMError { return pim.userMessage }
-        if error is TokenError { return AccountService.message(for: error) }
-        if let url = error as? URLError, url.code == .notConnectedToInternet { return "Offline." }
-        return error.localizedDescription
+        ErrorKind.classify(error).message
     }
 }

@@ -84,7 +84,7 @@ struct MenuBarPanel: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         errorBanners
-                        favoritesSection
+                        FavoriteChips(favorites: favorites)
                         activeSection
                         eligibleSection
                     }
@@ -125,6 +125,9 @@ struct MenuBarPanel: View {
             Spacer()
             if store.isRefreshing {
                 ProgressView().controlSize(.small)
+            } else if store.isOffline {
+                Label(offlineText, systemImage: "wifi.slash").font(.caption).foregroundStyle(.orange)
+                    .help("Actions are disabled until the network is back")
             } else if let last = store.lastRefresh {
                 Text(last, format: .dateTime.hour().minute()).font(.caption).foregroundStyle(.secondary)
                     .help("Last updated")
@@ -182,57 +185,21 @@ struct MenuBarPanel: View {
 
     // MARK: Sections
 
-    @ViewBuilder private var favoritesSection: some View {
-        if !favorites.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(favorites) { favorite in
-                            Button {
-                                Task { await store.run(favorite) }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    if store.runningFavorites.contains(favorite.id) {
-                                        ProgressView().controlSize(.mini)
-                                    } else {
-                                        Image(systemName: "star.fill").imageScale(.small)
-                                    }
-                                    Text(favorite.name).lineLimit(1)
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .disabled(favorite.items.isEmpty || store.runningFavorites.contains(favorite.id))
-                            .help("Activate \(favorite.items.count) role(s)")
-                        }
-                    }
-                }
-                if let toast = store.favoriteToast {
-                    let name = favorites.first { $0.id == toast.favoriteId }?.name ?? "Favorite"
-                    HStack(alignment: .top) {
-                        Text("\(name): \(toast.text)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                        Spacer()
-                        Button {
-                            store.favoriteToast = nil
-                        } label: {
-                            Image(systemName: "xmark").imageScale(.small)
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
-            }
-        }
+    private func bannerKinds(_ account: Account) -> [ErrorKind] {
+        let kinds: Set<ErrorKind> = Set((store.refreshErrors[account.id] ?? [:]).values)
+        return kinds.filter { $0 != .offline }.sorted { $0.message < $1.message }
     }
 
+    private var offlineText: String {
+        guard let last = store.lastOnline else { return "Offline" }
+        return "Offline — data from \(last.formatted(date: .omitted, time: .shortened))"
+    }
+
+    /// One banner per distinct problem (Offline is shown in the header instead).
     @ViewBuilder private var errorBanners: some View {
         ForEach(shownAccounts) { account in
-            ForEach(Array((store.refreshErrors[account.id] ?? [:]).sorted { $0.key.rawValue < $1.key.rawValue }), id: \.key) { _, message in
-                Label {
-                    Text(accountList.count > 1 ? "\(account.upn): \(message)" : message).font(.caption)
-                } icon: {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                }
-                .textSelection(.enabled)
+            ForEach(bannerKinds(account), id: \.message) { kind in
+                ErrorBanner(kind: kind, account: accountList.count > 1 ? account.upn : nil)
             }
         }
     }

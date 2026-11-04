@@ -1,3 +1,4 @@
+import AppKit
 import AzurePimCore
 import SwiftUI
 
@@ -76,7 +77,7 @@ struct EligibleRow: View {
                     Label("Pending", systemImage: "clock").font(.caption).foregroundStyle(.orange)
                         .help("Waiting for approval — see History")
                 } else {
-                    Button("Activate", action: activate).controlSize(.small)
+                    Button("Activate", action: activate).controlSize(.small).disabled(store.isOffline)
                 }
             }
             .frame(minHeight: 32)
@@ -120,7 +121,7 @@ struct ActiveRow: View {
                         Image(systemName: "stop.circle")
                     }
                     .buttonStyle(.borderless)
-                    .disabled(tooRecent)
+                    .disabled(tooRecent || store.isOffline)
                     .help(tooRecent ? "Can't deactivate within 5 minutes of activation" : "Deactivate")
                     .popover(isPresented: $confirming) {
                         VStack(alignment: .leading, spacing: 10) {
@@ -169,5 +170,88 @@ struct PermanentRow: View {
         .frame(minHeight: 28)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(assignment.roleName), \(assignment.scopeName), permanent")
+    }
+}
+
+/// Panel banner for a refresh problem (AppFlow › Empty and blocked states).
+struct ErrorBanner: View {
+    let kind: ErrorKind
+    let account: String?
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label {
+                Text(account.map { "\($0): \(kind.message)" } ?? kind.message).font(.caption)
+            } icon: {
+                Image(systemName: icon).foregroundStyle(.orange)
+            }
+            .textSelection(.enabled)
+            if case .cliExpired(let command) = kind {
+                Button(copied ? "Copied" : "Copy “\(command)”") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                    copied = true
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private var icon: String {
+        switch kind {
+        case .throttled: "hourglass"
+        case .cliExpired, .cliNotFound, .interactionRequired: "person.crop.circle.badge.exclamationmark"
+        case .forbidden: "hand.raised.fill"
+        default: "exclamationmark.triangle.fill"
+        }
+    }
+}
+
+/// Favorite chips and the last run result (T4.2).
+struct FavoriteChips: View {
+    @Environment(RoleStore.self) private var store
+    let favorites: [Favorite]
+
+    var body: some View {
+        if !favorites.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(favorites) { favorite in
+                            Button {
+                                Task { await store.run(favorite) }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    if store.runningFavorites.contains(favorite.id) {
+                                        ProgressView().controlSize(.mini)
+                                    } else {
+                                        Image(systemName: "star.fill").imageScale(.small)
+                                    }
+                                    Text(favorite.name).lineLimit(1)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(favorite.items.isEmpty || store.runningFavorites.contains(favorite.id) || store.isOffline)
+                            .help("Activate \(favorite.items.count) role(s)")
+                        }
+                    }
+                }
+                if let toast = store.favoriteToast {
+                    let name = favorites.first { $0.id == toast.favoriteId }?.name ?? "Favorite"
+                    HStack(alignment: .top) {
+                        Text("\(name): \(toast.text)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        Spacer()
+                        Button {
+                            store.favoriteToast = nil
+                        } label: {
+                            Image(systemName: "xmark").imageScale(.small)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+        }
     }
 }
