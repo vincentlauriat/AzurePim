@@ -50,9 +50,9 @@ public enum HistoryCSV {
     }
 
     public static func escape(_ field: String) -> String {
-        // Leading = + - @ would run as a formula in Excel / Numbers.
+        // Leading = + - @ tab CR would run as a formula in Excel / Numbers (OWASP CSV injection).
         var value = field
-        if let first = value.first, "=+-@".contains(first) { value = "'" + value }
+        if let first = value.unicodeScalars.first, "=+-@\t\r".unicodeScalars.contains(first) { value = "'" + value }
         // Scalars, not Characters: "\r\n" is a single Character and would hide a lone "\n".
         guard value.unicodeScalars.contains(where: { ",\"\r\n".unicodeScalars.contains($0) }) else { return value }
         return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""

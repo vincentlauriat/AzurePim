@@ -56,6 +56,7 @@ struct ActivityTests {
         #expect(HistoryCSV.escape("say \"hi\"") == "\"say \"\"hi\"\"\"")
         #expect(HistoryCSV.escape("line\nbreak") == "\"line\nbreak\"")
         #expect(HistoryCSV.escape("=HYPERLINK(1)") == "'=HYPERLINK(1)")
+        #expect(HistoryCSV.escape("\tcmd") == "'\tcmd")
     }
 
     @Test func csvHasOneLinePerRecord() throws {
@@ -111,6 +112,12 @@ struct ActivityTests {
         guard case .blocked = ExtendPlan.decide(policy: open, lastJustification: "d", lastDuration: nil, activeSince: start,
                                                 now: start.addingTimeInterval(60))
         else { Issue.record("5-minute rule must block"); return }
+    }
+
+    @Test func approvedStatusesCountAsProvisioned() {
+        #expect(RequestOutcome.status(from: "AdminApproved") == .provisioned)
+        #expect(RequestOutcome.status(from: "ScheduleCreated") == .provisioned)
+        #expect(RequestOutcome.status(from: "PendingApproval") == .pendingApproval)
     }
 
     @Test func alreadyActiveErrorDetection() {

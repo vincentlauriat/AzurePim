@@ -80,6 +80,11 @@ struct HistoryView: View {
         .fileExporter(isPresented: $exporting, document: csv,
                       contentType: .commaSeparatedText, defaultFilename: "AzurePim history") { _ in }
         .navigationTitle("History")
+        .onAppear {
+            store.historyVisible = true
+            Task { await store.refresh() }
+        }
+        .onDisappear { store.historyVisible = false }
     }
 
     private var summary: some View {

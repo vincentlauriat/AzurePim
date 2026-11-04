@@ -201,8 +201,9 @@ struct MenuBarPanel: View {
                     }
                 }
                 if let toast = store.favoriteToast {
+                    let name = favorites.first { $0.id == toast.favoriteId }?.name ?? "Favorite"
                     HStack(alignment: .top) {
-                        Text("\(toast.name): \(toast.text)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        Text("\(name): \(toast.text)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                         Spacer()
                         Button {
                             store.favoriteToast = nil

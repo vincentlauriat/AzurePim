@@ -65,19 +65,22 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
         let action = response.actionIdentifier
         let roleId = response.notification.request.content.userInfo[Self.roleKey] as? String
         let title = response.notification.request.content.title
-        await MainActor.run {
-            switch action {
-            case Self.extendAction:
-                guard let roleId, let onExtend else { return }
-                Task { @MainActor in
-                    let text = await onExtend(roleId)
-                    await self.notify(title: title, body: text)
-                }
-            case Self.dismissAction, UNNotificationDismissActionIdentifier:
-                break
-            default:
-                onOpen?()
-            }
+        switch action {
+        case Self.extendAction:
+            // Awaited here: the system treats the response as handled when this method returns.
+            guard let roleId else { return }
+            await extend(roleId: roleId, title: title)
+        case Self.dismissAction, UNNotificationDismissActionIdentifier:
+            break
+        default:
+            await MainActor.run { onOpen?() }
         }
+    }
+
+    private func extend(roleId: String, title: String) async {
+        guard let onExtend else { return }
+        let text = await onExtend(roleId)
+        center.removeDeliveredNotifications(withIdentifiers: [Self.prefix + roleId])
+        await notify(title: title, body: text)
     }
 }

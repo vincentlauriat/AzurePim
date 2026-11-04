@@ -94,9 +94,9 @@ private struct FavoriteEditor: View {
     var body: some View {
         Form {
             Section {
+                // Saved on Return or when the editor closes: the deep link should not change at every keystroke.
                 TextField("Name", text: $name)
                     .onSubmit(rename)
-                    .onChange(of: name) { _, _ in rename() }
                 if let nameError { Text(nameError).font(.caption).foregroundStyle(.red) }
                 let encoded = favorite.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
                 Text("Deep link: azurepim://activate?favorite=\(encoded)")
@@ -106,8 +106,8 @@ private struct FavoriteEditor: View {
                 if favorite.items.isEmpty {
                     Text("Add at least one role.").foregroundStyle(.secondary)
                 }
-                ForEach(Array(favorite.items.enumerated()), id: \.element.eligibleRoleId) { index, item in
-                    itemRow(index: index, item: item)
+                ForEach(favorite.items, id: \.eligibleRoleId) { item in
+                    itemRow(item: item)
                 }
                 Menu("Add role") {
                     ForEach(roles.filter { role in !favorite.items.contains { $0.eligibleRoleId == role.id } }) { role in
@@ -121,10 +121,10 @@ private struct FavoriteEditor: View {
             }
             Section {
                 HStack {
-                    Button("Run now") { Task { await store.run(favorite) } }
+                    Button("Run now") { Task { await store.run(favorite, fromPanel: false) } }
                         .disabled(favorite.items.isEmpty || store.runningFavorites.contains(favorite.id))
                     if store.runningFavorites.contains(favorite.id) { ProgressView().controlSize(.small) }
-                    if let toast = store.favoriteToast, toast.name == favorite.name {
+                    if let toast = store.favoriteToast, toast.favoriteId == favorite.id {
                         Text(toast.text).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                     }
                 }
@@ -132,9 +132,10 @@ private struct FavoriteEditor: View {
         }
         .formStyle(.grouped)
         .onAppear { name = favorite.name }
+        .onDisappear(perform: rename)
     }
 
-    @ViewBuilder private func itemRow(index: Int, item: FavoriteItem) -> some View {
+    @ViewBuilder private func itemRow(item: FavoriteItem) -> some View {
         let role = roles.first { $0.id == item.eligibleRoleId }
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -144,13 +145,13 @@ private struct FavoriteEditor: View {
                         .lineLimit(1).truncationMode(.middle)
                 }
                 Spacer()
-                Picker("Duration", selection: durationBinding(index)) {
+                Picker("Duration", selection: durationBinding(item.eligibleRoleId)) {
                     ForEach(presets(role), id: \.self) { value in Text(label(value)).tag(value) }
                 }
                 .labelsHidden()
                 .fixedSize()
                 Button {
-                    favorite.items.remove(at: index)
+                    favorite.items.removeAll { $0.eligibleRoleId == item.eligibleRoleId }
                     try? context.save()
                 } label: {
                     Image(systemName: "minus.circle")
@@ -158,7 +159,7 @@ private struct FavoriteEditor: View {
                 .buttonStyle(.borderless)
                 .help("Remove from favorite")
             }
-            TextField("Justification", text: justificationBinding(index),
+            TextField("Justification", text: justificationBinding(item.eligibleRoleId),
                       prompt: Text(role?.lastJustification ?? "Uses the last justification of this role"))
                 .font(.callout)
             if role?.requiresTicket == true {
@@ -178,19 +179,20 @@ private struct FavoriteEditor: View {
         return seconds >= 3600 ? "\(Int(seconds / 3600)) h" : "\(Int(seconds / 60)) min"
     }
 
-    private func durationBinding(_ index: Int) -> Binding<String> {
-        Binding(get: { favorite.items.indices.contains(index) ? favorite.items[index].duration : "PT8H" },
+    /// Bindings resolve the item by role id at each access: an index could point to a neighbour after a removal.
+    private func durationBinding(_ roleId: String) -> Binding<String> {
+        Binding(get: { favorite.items.first { $0.eligibleRoleId == roleId }?.duration ?? "PT8H" },
                 set: { value in
-                    guard favorite.items.indices.contains(index) else { return }
+                    guard let index = favorite.items.firstIndex(where: { $0.eligibleRoleId == roleId }) else { return }
                     favorite.items[index].duration = value
                     try? context.save()
                 })
     }
 
-    private func justificationBinding(_ index: Int) -> Binding<String> {
-        Binding(get: { favorite.items.indices.contains(index) ? favorite.items[index].justification ?? "" : "" },
+    private func justificationBinding(_ roleId: String) -> Binding<String> {
+        Binding(get: { favorite.items.first { $0.eligibleRoleId == roleId }?.justification ?? "" },
                 set: { value in
-                    guard favorite.items.indices.contains(index) else { return }
+                    guard let index = favorite.items.firstIndex(where: { $0.eligibleRoleId == roleId }) else { return }
                     favorite.items[index].justification = value.isEmpty ? nil : String(value.prefix(500))
                     try? context.save()
                 })
@@ -205,7 +207,7 @@ private struct FavoriteEditor: View {
                 try? context.save()
             }
         case .failure(let failure):
-            nameError = failure.userMessage
+            nameError = failure.userMessage + " — kept “\(favorite.name)”."
         }
     }
 }

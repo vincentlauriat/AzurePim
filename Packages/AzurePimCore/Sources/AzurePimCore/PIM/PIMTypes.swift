@@ -130,7 +130,8 @@ public struct RequestOutcome: Sendable, Equatable {
     /// Maps ARM / Graph request status strings.
     public static func status(from raw: String?) -> RequestStatus {
         switch raw?.lowercased() {
-        case "provisioned", "granted", "scheduled", "provisioningstarted", "pendingprovisioning", "accepted":
+        case "provisioned", "granted", "scheduled", "provisioningstarted", "pendingprovisioning", "accepted",
+             "adminapproved", "schedulecreated":
             return .provisioned
         case "pendingapproval", "pendingapprovalprovisioning", "pendingadmindecision", "pendingevaluation":
             return .pendingApproval

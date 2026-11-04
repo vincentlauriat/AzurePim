@@ -7,7 +7,7 @@ import SwiftData
 @Observable
 final class RoleStore {
     let context: ModelContext
-    private let accounts: AccountService
+    let accounts: AccountService
     let notifications: NotificationScheduler
     private var autoRefresh: Task<Void, Never>?
 
@@ -25,12 +25,17 @@ final class RoleStore {
     private var clock: Task<Void, Never>?
     /// Requests waiting for an approver, per account (History Window), and the last error fetching them.
     var pending: [UUID: [RemoteRequest]] = [:]
-    private(set) var pendingErrors: [UUID: String] = [:]
+    var pendingErrors: [UUID: String] = [:]
     /// Favorites being run, and the last result toast per favorite.
     var runningFavorites: Set<UUID> = []
-    var favoriteToast: (name: String, text: String)?
+    var favoriteToast: (favoriteId: UUID, text: String)?
     /// Last activation error per role, with whether it means "already active" (extend fallback).
     var lastActivationError: [String: (text: String, alreadyActive: Bool)] = [:]
+    /// True while the History window is shown: pending requests are then listed on every refresh.
+    var historyVisible = false
+    /// Roles with an extension in flight (a second tap on another notification is refused).
+    var extending: Set<String> = []
+    private var refreshRequested = false
     /// Account filter of the panel (nil = all accounts, T4.4).
     var accountFilter: UUID?
 
@@ -74,14 +79,21 @@ final class RoleStore {
         await refresh()
     }
 
+    /// A refresh asked while one runs is not dropped: it runs once more right after (an action's result must show).
     func refresh() async {
-        guard !isRefreshing else { return }
+        guard !isRefreshing else {
+            refreshRequested = true
+            return
+        }
         isRefreshing = true
         defer { isRefreshing = false }
-        let list = (try? context.fetch(FetchDescriptor<Account>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
-        for account in list {
-            await refresh(account)
-        }
+        repeat {
+            refreshRequested = false
+            let list = (try? context.fetch(FetchDescriptor<Account>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
+            for account in list {
+                await refresh(account)
+            }
+        } while refreshRequested
         lastRefresh = .now
         purgeHistory()
         try? context.save()
@@ -110,40 +122,6 @@ final class RoleStore {
         account.lastRefreshAt = snapshot.fetchedAt
         await refreshPolicies(of: account, service: service)
         await refreshPending(of: account, service: service, failedSources: Set(snapshot.errors.keys))
-    }
-
-    /// Pending approvals: lists them, and updates local records whose request was decided meanwhile (T4.3).
-    private func refreshPending(of account: Account, service: PIMService, failedSources: Set<RoleSource>) async {
-        var list: [RemoteRequest] = []
-        var failure: String?
-        for source in service.sources where !failedSources.contains(source.source) {
-            do {
-                list += try await source.pendingRequests()
-            } catch {
-                failure = Self.message(for: error)
-            }
-        }
-        pending[account.id] = list.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
-        pendingErrors[account.id] = failure
-        let open = Set(list.map { $0.id.lowercased() })
-        for record in account.records where record.status == .pendingApproval {
-            guard let requestId = record.remoteRequestId, !open.contains(requestId.lowercased()),
-                  let source = service.source(for: record.source),
-                  let status = try? await source.status(ofRequest: requestId), status != .pendingApproval else { continue }
-            record.status = status
-            if status == .provisioned { record.completedAt = .now }
-            await notifications.notify(title: "\(record.roleName) — \(record.scopeName)",
-                                       body: status == .provisioned ? "Request approved: the role is active."
-                                           : "Request \(status.rawValue).")
-        }
-    }
-
-    /// Deletes history older than the retention setting (pending requests are kept).
-    private func purgeHistory() {
-        let records = (try? context.fetch(FetchDescriptor<ActivationRecord>())) ?? []
-        for record in Retention.expired(records, days: accounts.settings.historyRetentionDays) {
-            context.delete(record)
-        }
     }
 
     /// Replaces the cache of one account. Sources that failed keep their previous rows (offline / throttled).
@@ -274,6 +252,16 @@ final class RoleStore {
               let policy = try? await source.policy(for: role.remote) else { return }
         role.policy = policy
         try? context.save()
+    }
+
+    /// Reads the policy from Azure / Graph now, ignoring the 24 h cache. False if it could not be read.
+    func refreshPolicy(for role: EligibleRole) async -> Bool {
+        guard let account = role.account,
+              let source = try? PIMService(sources: sources(for: account)).source(for: role.source),
+              let policy = try? await source.policy(for: role.remote) else { return false }
+        role.policy = policy
+        try? context.save()
+        return true
     }
 
     // MARK: - Queries

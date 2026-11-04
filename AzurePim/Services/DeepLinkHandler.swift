@@ -34,9 +34,15 @@ enum DeepLinkHandler {
         NSApp.activate(ignoringOtherApps: true)
         let confirm = NSAlert()
         confirm.messageText = "Activate “\(favorite.name)”?"
-        confirm.informativeText = "A link asked AzurePim to activate \(favorite.items.count) role(s)."
-        confirm.addButton(withTitle: "Activate")
-        confirm.addButton(withTitle: "Cancel")
+        let names = favorite.items.compactMap { store.eligibleRole(id: $0.eligibleRoleId) }
+            .map { "• \($0.roleName) — \($0.scopeName)" }
+        confirm.informativeText = "A link asked AzurePim to activate:\n" + names.joined(separator: "\n")
+        // Cancel is the default button: a Return typed for another app must not activate privileged roles.
+        let activate = confirm.addButton(withTitle: "Activate")
+        activate.keyEquivalent = ""
+        let cancel = confirm.addButton(withTitle: "Cancel")
+        cancel.keyEquivalent = "\r"
+        confirm.alertStyle = .warning
         guard confirm.runModal() == .alertFirstButtonReturn else { return }
         let text = await store.run(favorite, fromPanel: false)
         alert(favorite.name, info: text)
