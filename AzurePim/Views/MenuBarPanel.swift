@@ -96,10 +96,10 @@ struct MenuBarPanel: View {
             }
         }
         .frame(width: 360)
-        .onAppear {
+        .background(WindowKeyObserver {
             store.panelOpenedAt = .now
             Task { await store.refreshIfStale() }
-        }
+        })
     }
 
     // MARK: Header / footer
