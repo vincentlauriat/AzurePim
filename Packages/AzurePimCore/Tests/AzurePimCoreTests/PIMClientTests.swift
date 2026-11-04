@@ -112,7 +112,10 @@ struct ARMClientTests {
                                             memberType: .direct)
         let outcome = try await ARMClient(client: client(transport)).activate(
             eligibility, principalId: "oid", input: ActivationInput(duration: "PT4H", justification: "deploy", ticketNumber: "INC1"))
-        #expect(outcome == RequestOutcome(requestId: "req-1", status: .provisioned))
+        // No `id` in the reply: the full resource id is rebuilt from the scope (needed by status and cancel).
+        #expect(outcome.status == .provisioned)
+        let requestId = try #require(outcome.requestId)
+        #expect(requestId.hasPrefix("\(rootScope)/providers/Microsoft.Authorization/roleAssignmentScheduleRequests/"))
         #expect(transport.requests[0].httpMethod == "PUT")
         let path = try #require(transport.requests[0].url?.path)
         #expect(path.hasPrefix("\(rootScope)/providers/Microsoft.Authorization/roleAssignmentScheduleRequests/"))
@@ -237,6 +240,9 @@ struct PIMServiceTests {
         func deactivate(_ eligibility: RemoteEligibility, principalId: String) async throws -> RequestOutcome {
             RequestOutcome(requestId: nil, status: .canceled)
         }
+        func pendingRequests() async throws -> [RemoteRequest] { [] }
+        func status(ofRequest id: String) async throws -> RequestStatus { .provisioned }
+        func cancel(request id: String) async throws {}
     }
 
     @Test func oneFailingSourceDoesNotHideOthers() async {
@@ -271,5 +277,8 @@ struct LiveARMTests {
         }
         print("live active:", snapshot.assignments.map { "\($0.roleName) @ \($0.scopeName) \($0.type)" })
         #expect(!snapshot.eligibilities.isEmpty)
+        // Read-only: requests sent by the current user that wait for approval.
+        let pending = try await sources[0].pendingRequests()
+        print("live pending:", pending.map { "\($0.roleName) @ \($0.scopeName)" })
     }
 }

@@ -90,7 +90,9 @@ public struct ARMClient: PIMSource {
         let url = Self.url("\(eligibility.scope)/providers/Microsoft.Authorization/roleAssignmentScheduleRequests/\(name)")
         let response = try await client.json("PUT", url, body: ["properties": properties])
         let props = response["properties"] as? [String: Any]
-        return RequestOutcome(requestId: response["name"] as? String ?? name,
+        // Full resource id: status and cancel calls need the scope, not only the name.
+        let fallback = "\(eligibility.scope)/providers/Microsoft.Authorization/roleAssignmentScheduleRequests/\(name)"
+        return RequestOutcome(requestId: response["id"] as? String ?? fallback,
                               status: RequestOutcome.status(from: props?["status"] as? String))
     }
 

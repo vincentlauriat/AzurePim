@@ -92,3 +92,17 @@ public enum ISODuration {
         }
     }
 }
+
+extension Validation.Failure {
+    /// Short English message for inline errors and toasts.
+    public var userMessage: String {
+        switch self {
+        case .empty(let field): field == "ticket" ? "Ticket number required by policy" : "\(field.capitalized) required"
+        case .tooLong(let field, let max): "\(field.capitalized) is limited to \(max) characters"
+        case .outOfRange(let field, let range): "\(field.capitalized) must be between \(range.lowerBound) and \(range.upperBound)"
+        case .invalidFormat(let field): "Invalid \(field)"
+        case .duplicate(let field): "This \(field) is already used"
+        case .exceedsPolicy(let max): "Longer than the policy maximum (\(Int(max / 3600)) h)"
+        }
+    }
+}
