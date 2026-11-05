@@ -3,7 +3,8 @@ import SwiftData
 
 /// Versioned schema (BackendSchema › Migrations). Add `AzurePimSchemaV2` + a migration stage for changes.
 public enum AzurePimSchemaV1: VersionedSchema {
-    public static let versionIdentifier = Schema.Version(1, 0, 0)
+    // Computed, not stored: Schema.Version is not Sendable in the macOS 15 SDK (Swift 6.1 rejects a stored static).
+    public static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
     public static var models: [any PersistentModel.Type] {
         [Account.self, EligibleRole.self, ActiveAssignment.self, Favorite.self, ActivationRecord.self, AppSettings.self]
     }

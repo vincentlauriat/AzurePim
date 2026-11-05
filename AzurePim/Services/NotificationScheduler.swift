@@ -28,7 +28,12 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func reschedule(activations: [ActiveAssignment], leadMinutes: Int) async {
-        let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(Self.prefix) }
+        // Only identifiers (Sendable) cross back: Swift 6.1 rejects sending [UNNotificationRequest].
+        let center = self.center
+        let ids: [String] = await withCheckedContinuation { done in
+            center.getPendingNotificationRequests { requests in done.resume(returning: requests.map(\.identifier)) }
+        }
+        let pending = ids.filter { $0.hasPrefix(Self.prefix) }
         center.removePendingNotificationRequests(withIdentifiers: pending)
         for assignment in activations {
             guard let end = assignment.endAt else { continue }
@@ -44,7 +49,7 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
             }
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSinceNow, repeats: false)
             let id = Self.prefix + (assignment.eligibleRole?.id ?? assignment.id)
-            try? await center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+            await Self.schedule(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
         }
     }
 
@@ -53,7 +58,13 @@ final class NotificationScheduler: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        try? await center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+        await Self.schedule(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+
+    /// Adds a request from outside the main actor: the stored `center` never crosses actors, which Swift 6.1 rejects.
+    /// The request is freshly built by the caller and not used afterwards, so sending it is safe.
+    private nonisolated static func schedule(_ request: UNNotificationRequest) async {
+        try? await UNUserNotificationCenter.current().add(request)
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification)

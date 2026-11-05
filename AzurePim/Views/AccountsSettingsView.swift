@@ -69,13 +69,13 @@ struct AccountsSettingsView: View {
         }
     }
 
-    private func run(_ action: @escaping () async throws -> some Any) {
+    private func run(_ action: @escaping @MainActor () async throws -> Void) {
         busy = true
         error = nil
         Task {
             defer { busy = false }
             do {
-                _ = try await action()
+                try await action()
                 await store.refresh()
             } catch {
                 self.error = AccountService.message(for: error)

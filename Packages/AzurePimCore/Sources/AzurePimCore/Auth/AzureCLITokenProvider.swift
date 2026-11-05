@@ -10,14 +10,15 @@ public actor AzureCLITokenProvider: TokenProvider {
 
     private nonisolated let configuredPath: String?
     private let runner: ProcessRunning
-    /// FileManager is thread-safe for the read-only checks used here.
-    private nonisolated(unsafe) let fileManager: FileManager
+    /// FileManager is thread-safe for the read-only checks used here; boxed so Swift 6.1 accepts it in nonisolated code.
+    private nonisolated let files: UncheckedFileManager
+    private nonisolated var fileManager: FileManager { files.value }
     private var cache: [String: AccessToken] = [:]
 
     public init(configuredPath: String? = nil, runner: ProcessRunning = ProcessRunner(), fileManager: FileManager = .default) {
         self.configuredPath = configuredPath
         self.runner = runner
-        self.fileManager = fileManager
+        self.files = UncheckedFileManager(value: fileManager)
     }
 
     /// Path of the `az` executable, or nil when not installed.
@@ -130,4 +131,9 @@ public actor AzureCLITokenProvider: TokenProvider {
         let firstLine = stderr.split(separator: "\n").first.map(String.init) ?? "Azure CLI error"
         return .failed(firstLine.replacingOccurrences(of: "ERROR: ", with: ""))
     }
+}
+
+/// FileManager is documented as thread-safe for the read-only queries made here.
+struct UncheckedFileManager: @unchecked Sendable {
+    let value: FileManager
 }
