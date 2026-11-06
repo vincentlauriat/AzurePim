@@ -51,8 +51,8 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.9.0"
+        CURRENT_PROJECT_VERSION: "2"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         ARCHS: "$(ARCHS_STANDARD)"
         ENABLE_HARDENED_RUNTIME: YES
@@ -76,6 +76,10 @@ targets:
         # MSAL client id (Config/AzurePim.xcconfig); empty = Microsoft sign-in disabled.
         AzurePimClientID: "$(AZUREPIM_CLIENT_ID)"
         NSHumanReadableCopyright: "© 2026 Vincent Lauriat. MIT License."
+        # Sparkle. Never change SUPublicEDKey: see the banner in Scripts/release.sh.
+        SUFeedURL: https://raw.githubusercontent.com/vincentlauriat/AzurePim/main/appcast.xml
+        SUPublicEDKey: jw4HHLHEPTjJTheR+tMwOE5j6591yFErURAY9PqZ+xs=
+        SUEnableAutomaticChecks: true
         CFBundleURLTypes:
           - CFBundleURLName: fr.vincentlauriat.azurepim
             CFBundleURLSchemes:

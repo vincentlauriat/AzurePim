@@ -8,6 +8,8 @@ release/
 *.dmg
 *.zip
 build/
+.sparkle-tools/
+.dmgbuild-venv/
 DerivedData/
 *.xcuserstate
 xcuserdata/

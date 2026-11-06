@@ -21,8 +21,8 @@
   <img src="docs/screenshots/panel-dark.png" width="340" alt="AzurePim menu bar panel with two active roles">
 </p>
 
-> **Status: pre-release.** Steps 1–4 of the [implementation plan](ImplementationPlan.md) are built; the signed DMG
-> and automatic updates come with Step 6. Today you build it from source (below).
+> **Status: 0.9, pre-1.0.** The signed DMG works with Azure CLI. It ships without a client ID, so Microsoft sign-in
+> (Entra roles and PIM groups) needs your own app registration and has not been tested live yet; it comes with 1.0.
 
 ## Why
 
@@ -56,7 +56,11 @@ Screenshots use demo data (Contoso).
 
 ## Install
 
-Requirements: macOS 14 or later, Xcode (stable), [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+Requires macOS 14 or later. Download the signed and notarized DMG from
+[GitHub Releases](https://github.com/vincentlauriat/AzurePim/releases/latest) and drag AzurePim to Applications.
+Updates arrive automatically through Sparkle, or from Settings › About › Check for Updates.
+
+To build from source, you need Xcode (stable) and [XcodeGen](https://github.com/yonaskolb/XcodeGen):
 
 ```bash
 git clone https://github.com/vincentlauriat/AzurePim.git && cd AzurePim
@@ -125,6 +129,8 @@ AZUREPIM_SNAPSHOT=/tmp/shots build/Build/Products/Debug/AzurePim.app/Contents/Ma
 | `Packages/AzurePimCore/` | UI-free logic: token providers, ARM and Graph PIM clients, models, validation, tests |
 | `docs/` | Website (GitHub Pages), screenshots, admin consent email template |
 | `project.yml` | XcodeGen spec (MSAL and Sparkle pinned to exact versions) |
+| `Scripts/release.sh` | Builds, signs, notarizes and packages the DMG, and writes `appcast.xml` |
+| `appcast.xml` | Sparkle update feed |
 
 | Document | Content |
 |---|---|
@@ -142,7 +148,7 @@ AZUREPIM_SNAPSHOT=/tmp/shots build/Build/Products/Debug/AzurePim.app/Contents/Ma
 - [x] Step 3 — activate, deactivate and track from the menu bar
 - [x] Step 4 — extend, favorites, history, several accounts, Roles window
 - [ ] Step 5 — quality: error states, accessibility, performance, security reviews (in progress)
-- [ ] Step 6 — signed and notarized DMG, automatic updates (Sparkle)
+- [ ] Step 6 — signed and notarized DMG, automatic updates (Sparkle): 0.9.0 shipped; update path untested until the next release
 - [ ] Later — Mac App Store version
 
 ## License
