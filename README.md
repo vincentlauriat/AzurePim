@@ -21,8 +21,8 @@
   <img src="docs/screenshots/panel-dark.png" width="340" alt="AzurePim menu bar panel with two active roles">
 </p>
 
-> **Status: 0.9, pre-1.0.** The signed DMG signs in with Azure CLI only: Microsoft sign-in (Entra roles and PIM
-> groups) is disabled until the app registration exists, and comes with 1.0.
+> **Status: 0.9, pre-1.0.** The signed DMG works with Azure CLI. It ships without a client ID, so Microsoft sign-in
+> (Entra roles and PIM groups) needs your own app registration and has not been tested live yet; it comes with 1.0.
 
 ## Why
 
