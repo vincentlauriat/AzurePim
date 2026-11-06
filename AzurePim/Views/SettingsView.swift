@@ -17,6 +17,9 @@ struct SettingsView: View {
                 LabeledContent("MSAL", value: MSALPublicClientApplication.sdkVersion ?? "?")
                 LabeledContent("Sparkle", value: updater.sparkleVersion)
                 LabeledContent("Microsoft sign-in", value: accounts.isMSALConfigured ? "Configured" : "No client ID")
+                if updater.isEnabled {
+                    Button("Check for Updates…") { updater.checkForUpdates() }
+                }
             }
             .formStyle(.grouped)
             .tabItem { Label("About", systemImage: "info.circle") }
