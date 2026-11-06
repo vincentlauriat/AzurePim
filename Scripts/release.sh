@@ -8,7 +8,7 @@
 # |                                                                            |
 # | Updates are EdDSA-signed with the private key in the login keychain under  |
 # | account "AzurePim". Its public half is SUPublicEDKey in project.yml:       |
-# |     oGxHAH0aXmMuHBG/E6/PsROoQPDhw3vicDP+FK1S4hA=                            |
+# |     oGxHAH0aXmMuHBG/E6/PsROoQPDhw3vicDP+FK1S4hA=                           |
 # |                                                                            |
 # | Never import a new key into this account and never change SUPublicEDKey:   |
 # | every installed app would reject all future updates. Back it up with       |
