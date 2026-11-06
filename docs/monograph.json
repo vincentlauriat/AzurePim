@@ -28,11 +28,11 @@
  "actions": [
   {
    "label": {
-    "en": "Build from source",
-    "fr": "Compiler depuis les sources",
-    "zh": "從原始碼建置"
+    "en": "Download",
+    "fr": "Télécharger",
+    "zh": "下載"
    },
-   "href": "#install",
+   "href": "https://github.com/vincentlauriat/AzurePim/releases/latest",
    "primary": true
   },
   {
@@ -84,9 +84,9 @@
     "zh": "發行"
    },
    "v": {
-    "en": "Build from source · signed DMG coming soon",
-    "fr": "Compilation depuis les sources · DMG signé bientôt",
-    "zh": "從原始碼建置 · 已簽章 DMG 即將推出"
+    "en": "Signed and notarized DMG · automatic updates",
+    "fr": "DMG signé et notarisé · mises à jour automatiques",
+    "zh": "已簽章並經公證的 DMG · 自動更新"
    }
   },
   {
@@ -409,9 +409,9 @@
     "zh": "安裝"
    },
    "p": {
-    "en": "A signed and notarized DMG with automatic updates is on the way. Until then, build it in two minutes (Xcode and XcodeGen required):",
-    "fr": "Un DMG signé et notarisé, avec mises à jour automatiques, arrive bientôt. En attendant, compilez-le en deux minutes (Xcode et XcodeGen requis) :",
-    "zh": "已簽章並經公證、支援自動更新的 DMG 即將推出。在此之前，兩分鐘即可自行建置（需要 Xcode 與 XcodeGen）："
+    "en": "Download the signed and notarized DMG from GitHub Releases; it updates itself. This version signs in with Azure CLI; Microsoft sign-in comes with 1.0. Or build it from source (Xcode and XcodeGen required):",
+    "fr": "Téléchargez le DMG signé et notarisé depuis GitHub Releases ; il se met à jour tout seul. Cette version se connecte via Azure CLI ; la connexion Microsoft arrive avec la 1.0. Ou compilez-le depuis les sources (Xcode et XcodeGen requis) :",
+    "zh": "從 GitHub Releases 下載已簽章並經公證的 DMG，它會自動更新。此版本透過 Azure CLI 登入；Microsoft 登入將於 1.0 推出。或從原始碼建置（需要 Xcode 與 XcodeGen）："
    },
    "blocks": [
     {
@@ -435,11 +435,11 @@
   "actions": [
    {
     "label": {
-     "en": "Build from source",
-     "fr": "Compiler depuis les sources",
-     "zh": "從原始碼建置"
+     "en": "Download",
+     "fr": "Télécharger",
+     "zh": "下載"
     },
-    "href": "#install",
+    "href": "https://github.com/vincentlauriat/AzurePim/releases/latest",
     "primary": true
    },
    {
