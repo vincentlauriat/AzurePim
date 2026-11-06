@@ -51,8 +51,8 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
-        MARKETING_VERSION: "0.9.0"
-        CURRENT_PROJECT_VERSION: "2"
+        MARKETING_VERSION: "0.9.1"
+        CURRENT_PROJECT_VERSION: "3"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         ARCHS: "$(ARCHS_STANDARD)"
         ENABLE_HARDENED_RUNTIME: YES
@@ -78,7 +78,7 @@ targets:
         NSHumanReadableCopyright: "© 2026 Vincent Lauriat. MIT License."
         # Sparkle. Never change SUPublicEDKey: see the banner in Scripts/release.sh.
         SUFeedURL: https://raw.githubusercontent.com/vincentlauriat/AzurePim/main/appcast.xml
-        SUPublicEDKey: jw4HHLHEPTjJTheR+tMwOE5j6591yFErURAY9PqZ+xs=
+        SUPublicEDKey: oGxHAH0aXmMuHBG/E6/PsROoQPDhw3vicDP+FK1S4hA=
         SUEnableAutomaticChecks: true
         CFBundleURLTypes:
           - CFBundleURLName: fr.vincentlauriat.azurepim

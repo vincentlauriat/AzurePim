@@ -9,6 +9,8 @@ release/
 *.zip
 build/
 .sparkle-tools/
+*Sparkle*key*
+ClefSparkle*
 .dmgbuild-venv/
 DerivedData/
 *.xcuserstate

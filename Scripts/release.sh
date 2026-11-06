@@ -8,11 +8,11 @@
 # |                                                                            |
 # | Updates are EdDSA-signed with the private key in the login keychain under  |
 # | account "AzurePim". Its public half is SUPublicEDKey in project.yml:       |
-# |     jw4HHLHEPTjJTheR+tMwOE5j6591yFErURAY9PqZ+xs=                           |
+# |     oGxHAH0aXmMuHBG/E6/PsROoQPDhw3vicDP+FK1S4hA=                            |
 # |                                                                            |
 # | Never import a new key into this account and never change SUPublicEDKey:   |
 # | every installed app would reject all future updates. Back it up with       |
-# | `generate_keys -x <file> --account AzurePim`, somewhere safe.              |
+# | `generate_keys -x <absolute path outside this repo> --account AzurePim`.   |
 # +--------------------------------------------------------------------------+
 #
 # Usage: ./Scripts/release.sh <version>      e.g. ./Scripts/release.sh 0.9.0
