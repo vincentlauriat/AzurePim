@@ -25,6 +25,8 @@ final class MSALTokenProvider: TokenProvider {
         let authority = try MSALAADAuthority(url: URL(string: Self.organizationsAuthority)!)
         let redirect = "msauth.\(Bundle.main.bundleIdentifier ?? "fr.vincentlauriat.azpim")://auth"
         let config = MSALPublicClientApplicationConfig(clientId: clientId, redirectUri: redirect, authority: authority)
+        // Explicit token-cache group (S-L5): MSAL prefixes the team id; the entitlement and the embedded profile allow it.
+        config.cacheConfig.keychainSharingGroup = "com.microsoft.identity.universalstorage"
         application = try MSALPublicClientApplication(configuration: config)
         self.homeAccountId = homeAccountId
     }

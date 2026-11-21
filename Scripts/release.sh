@@ -304,6 +304,36 @@ STAGING="$STAGING_DIR/AzPim.app"
 echo "→ Staging to $STAGING_DIR"
 ditto --norsrc --noextattr --noacl "$APP" "$STAGING"
 
+# Developer ID provisioning profile: required by the restricted entitlements in AzPim.entitlements
+# (application-identifier, keychain-access-groups for the MSAL token cache). Kept outside the repo.
+PROVISIONING_PROFILE="${PROVISIONING_PROFILE:-$HOME/DevApps/Templates/clefs/AzPim_Developer_ID.provisionprofile}"
+echo "→ Embedding the provisioning profile $PROVISIONING_PROFILE"
+[ -f "$PROVISIONING_PROFILE" ] || { echo "✗ provisioning profile not found: $PROVISIONING_PROFILE" >&2; exit 1; }
+PROFILE_PLIST="$STAGING_DIR/profile.plist"
+security cms -D -i "$PROVISIONING_PROFILE" > "$PROFILE_PLIST"
+SIGNING_SERIAL="$(security find-certificate -c "$SIGNING_IDENTITY" -p | openssl x509 -noout -serial | cut -d= -f2)"
+python3 -I - "$PROFILE_PLIST" "KFLACS69T9.$(plist_value CFBundleIdentifier)" "$SIGNING_SERIAL" <<'PY'
+import datetime, plistlib, subprocess, sys
+profile = plistlib.load(open(sys.argv[1], "rb"))
+app_id, serial = sys.argv[2], sys.argv[3].upper()
+ent = profile["Entitlements"]
+if ent.get("com.apple.application-identifier") != app_id:
+    sys.exit(f"✗ profile is for {ent.get('com.apple.application-identifier')}, not {app_id}")
+if "KFLACS69T9.*" not in ent.get("keychain-access-groups", []):
+    sys.exit("✗ profile does not allow the KFLACS69T9.* keychain groups")
+if profile["ExpirationDate"] <= datetime.datetime.now():
+    sys.exit(f"✗ profile expired on {profile['ExpirationDate']:%Y-%m-%d}")
+serials = []
+for der in profile["DeveloperCertificates"]:
+    out = subprocess.run(["openssl", "x509", "-inform", "DER", "-noout", "-serial"], input=der,
+                         capture_output=True, check=True).stdout.decode()
+    serials.append(out.strip().split("=", 1)[1].upper())
+if serial not in serials:
+    sys.exit(f"✗ profile does not include the signing certificate {serial} (has {', '.join(serials)})")
+print(f"  profile {profile['Name']} OK (expires {profile['ExpirationDate']:%Y-%m-%d})")
+PY
+cp "$PROVISIONING_PROFILE" "$STAGING/Contents/embedded.provisionprofile"
+
 # Apple's timestamp.apple.com is intermittently flaky — we've seen
 # "A timestamp was expected but was not found." mid-pipeline several times.
 # Retry up to 5 times with a short backoff before giving up.

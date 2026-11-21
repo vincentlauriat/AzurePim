@@ -5,5 +5,16 @@
     <!-- No sandbox: Azure CLI mode launches `az` (TRD). The Mac App Store build will be a separate MSAL-only target. -->
     <key>com.apple.security.app-sandbox</key>
     <false/>
+    <!-- MSAL token cache (data-protection keychain). Restricted entitlements: the release build embeds the
+         Developer ID provisioning profile for fr.vincentlauriat.azpim, without it the app does not launch
+         (error 163). Literal team prefix: release.sh signs with this file as is, no variable expansion. -->
+    <key>com.apple.application-identifier</key>
+    <string>KFLACS69T9.fr.vincentlauriat.azpim</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>KFLACS69T9</string>
+    <key>keychain-access-groups</key>
+    <array>
+        <string>KFLACS69T9.com.microsoft.identity.universalstorage</string>
+    </array>
 </dict>
 </plist>
